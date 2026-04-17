@@ -21,6 +21,12 @@ async def recognize(file: UploadFile = File(...)):
 
     people = recognize_faces(temp_path)
 
+    # ✅ ADD THIS BLOCK
+    if people:
+        for name in people:
+            if name != "Unknown":
+                mark_attendance(name)
+
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     face_cascade = cv2.CascadeClassifier(

@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from datetime import datetime
 
-FILE_PATH = "attendance.csv"
+FILE_PATH = "data/attendance.csv"
 
 def mark_attendance(name):
     if not os.path.exists(FILE_PATH):
