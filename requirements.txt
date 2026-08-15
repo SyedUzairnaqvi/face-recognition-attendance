@@ -7,3 +7,4 @@ python-multipart>=0.0.9,<1
 deepface>=0.0.93,<1
 
 streamlit>=1.40,<2
+tf-keras==2.21.0
