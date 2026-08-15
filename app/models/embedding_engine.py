@@ -37,7 +37,8 @@ def build_embedding_index(known_faces_dir: Path) -> dict:
             representations = DeepFace.represent(
                 img_path=str(image_path),
                 model_name=EMBEDDING_MODEL_NAME,
-                detector_backend="opencv",
+                # RetinaFace avoids the OpenCV Haar Cascade failure seen on Render.
+                detector_backend="retinaface",
                 enforce_detection=True,
             )
         except Exception as exc:
@@ -92,17 +93,12 @@ def load_embedding_index() -> Dict[str, np.ndarray]:
 
 
 def _extract_live_faces(img_path: str) -> list[dict]:
-    """Detect faces and run DeepFace's anti-spoofing model when enabled.
-
-    A valid image can still contain no detectable face. Treat that as a
-    normal recognition outcome instead of leaking a DeepFace exception into
-    the API as HTTP 500. Other DeepFace errors are intentionally propagated
-    so genuine model/configuration failures remain visible.
-    """
+    """Detect faces and run DeepFace's anti-spoofing model when enabled."""
     try:
         return DeepFace.extract_faces(
             img_path=img_path,
-            detector_backend="opencv",
+            # RetinaFace avoids the OpenCV Haar Cascade failure seen on Render.
+            detector_backend="retinaface",
             enforce_detection=True,
             align=True,
             anti_spoofing=LIVENESS_ENABLED,
@@ -121,24 +117,16 @@ def recognize_with_embeddings(img_path: str) -> List[dict]:
         liveness = assess_liveness(face_obj)
         is_real = liveness["is_real"] if LIVENESS_ENABLED else True
 
-        # Never generate an identity match for a face rejected as a spoof.
         if LIVENESS_ENABLED and not bool(is_real):
             results.append({
-                "name": "Unknown",
-                "matched": False,
-                "distance": None,
-                "threshold": EMBEDDING_DISTANCE_THRESHOLD,
-                "match_score": 0,
-                "engine": "embedding_cosine",
-                "model": EMBEDDING_MODEL_NAME,
-                "liveness": liveness,
-                "face_box": facial_area,
+                "name": "Unknown", "matched": False, "distance": None,
+                "threshold": EMBEDDING_DISTANCE_THRESHOLD, "match_score": 0,
+                "engine": "embedding_cosine", "model": EMBEDDING_MODEL_NAME,
+                "liveness": liveness, "face_box": facial_area,
                 "reason": "spoof_detected",
             })
             continue
 
-        # DeepFace returns RGB-normalized face arrays; convert to BGR before
-        # passing the crop back through representation(), matching its own API.
         face = face_obj["face"]
         if face.dtype != np.uint8:
             face = np.clip(face * 255.0, 0, 255).astype(np.uint8)
@@ -151,15 +139,10 @@ def recognize_with_embeddings(img_path: str) -> List[dict]:
         )
         if not representations:
             results.append({
-                "name": "Unknown",
-                "matched": False,
-                "distance": None,
-                "threshold": EMBEDDING_DISTANCE_THRESHOLD,
-                "match_score": 0,
-                "engine": "embedding_cosine",
-                "model": EMBEDDING_MODEL_NAME,
-                "liveness": liveness,
-                "face_box": facial_area,
+                "name": "Unknown", "matched": False, "distance": None,
+                "threshold": EMBEDDING_DISTANCE_THRESHOLD, "match_score": 0,
+                "engine": "embedding_cosine", "model": EMBEDDING_MODEL_NAME,
+                "liveness": liveness, "face_box": facial_area,
                 "reason": "embedding_failed",
             })
             continue
