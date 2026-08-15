@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from app.db.database import init_db
-from app.api.routes import recognition, attendance, health
+from app.api.routes import recognition, attendance, health, enrollment
 
 init_db()
 app = FastAPI(
@@ -12,6 +12,7 @@ app = FastAPI(
 app.include_router(health.router)
 app.include_router(recognition.router)
 app.include_router(attendance.router)
+app.include_router(enrollment.router)
 
 
 @app.get("/")
