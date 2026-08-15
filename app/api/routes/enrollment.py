@@ -47,9 +47,10 @@ async def register(name: str, file: UploadFile = File(...)):
         if not quality["accepted"]:
             raise HTTPException(status_code=400, detail={"reason": "image_quality", "quality": quality})
 
+        # Use RetinaFace instead of OpenCV Haar Cascade on Render.
         faces = DeepFace.extract_faces(
             img_path=str(temp_path),
-            detector_backend="opencv",
+            detector_backend="retinaface",
             enforce_detection=True,
             align=True,
             anti_spoofing=LIVENESS_ENABLED,
