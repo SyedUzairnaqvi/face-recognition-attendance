@@ -2,13 +2,45 @@ import re
 from uuid import uuid4
 
 import cv2
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 
 from app.core.config import KNOWN_FACES_DIR, MAX_UPLOAD_BYTES
 from app.models.embedding_engine import build_embedding_index
 from app.services.quality_service import assess_image
 
 router = APIRouter(prefix="/enrollment", tags=["Enrollment"])
+
+_build_state = {
+    "status": "idle",
+    "result": None,
+    "error": None,
+}
+
+
+def _run_build_index():
+    global _build_state
+
+    _build_state = {
+        "status": "building",
+        "result": None,
+        "error": None,
+    }
+
+    try:
+        result = build_embedding_index(KNOWN_FACES_DIR)
+        _build_state = {
+            "status": "ready",
+            "result": result,
+            "error": None,
+        }
+        print(f"Embedding index built successfully: {result}")
+    except Exception as exc:
+        _build_state = {
+            "status": "failed",
+            "result": None,
+            "error": str(exc),
+        }
+        print(f"Embedding index build failed: {exc}")
 
 
 @router.post("/register")
@@ -48,8 +80,6 @@ async def register(
     image_path = person_dir / f"{uuid4().hex}.jpg"
     image_path.write_bytes(data)
 
-    # Heavy DeepFace embedding generation is intentionally not run here.
-    # Use /enrollment/build-index after registration.
     return {
         "status": "registered",
         "name": clean_name,
@@ -61,18 +91,24 @@ async def register(
     }
 
 
-@router.post("/build-index")
-def build_index():
-    """Build the face embedding index from all registered images."""
-    try:
-        result = build_embedding_index(KNOWN_FACES_DIR)
+@router.post("/build-index", status_code=202)
+def build_index(background_tasks: BackgroundTasks):
+    """Start the face embedding index build in the background."""
+    if _build_state["status"] == "building":
         return {
-            "status": "ready",
-            "embedding_build": "complete",
-            **result,
+            "status": "building",
+            "message": "Embedding index build is already running.",
         }
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail={"reason": "embedding_build_failed", "error": str(exc)},
-        ) from exc
+
+    background_tasks.add_task(_run_build_index)
+
+    return {
+        "status": "building",
+        "message": "Embedding index build started. Poll /enrollment/build-index/status.",
+    }
+
+
+@router.get("/build-index/status")
+def build_index_status():
+    """Return the current embedding index build status."""
+    return _build_state
