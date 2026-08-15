@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+*.db
+data/tmp/
+data/logs/
+data/face_embeddings.npz
+data/known_faces/*
+!data/known_faces/.gitkeep
