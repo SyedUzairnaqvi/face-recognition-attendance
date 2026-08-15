@@ -12,10 +12,9 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", "5000000"))
 QUALITY_BLUR_THRESHOLD = float(os.getenv("QUALITY_BLUR_THRESHOLD", "40"))
 MIN_BRIGHTNESS = float(os.getenv("MIN_BRIGHTNESS", "35"))
 MAX_BRIGHTNESS = float(os.getenv("MAX_BRIGHTNESS", "225"))
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "Facenet512")
+# FaceNet is substantially lighter than FaceNet512 and is a better fit for Render Free.
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "Facenet")
 EMBEDDING_DISTANCE_THRESHOLD = float(os.getenv("EMBEDDING_DISTANCE_THRESHOLD", "0.30"))
-# Disabled by default because DeepFace's FasNet anti-spoofing requires PyTorch.
-# Enable explicitly with LIVENESS_ENABLED=true when the deployment includes torch.
 LIVENESS_ENABLED = os.getenv("LIVENESS_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
 
 for p in (DATA_DIR, KNOWN_FACES_DIR, TEMP_DIR):
