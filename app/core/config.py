@@ -13,10 +13,10 @@ QUALITY_BLUR_THRESHOLD = float(os.getenv("QUALITY_BLUR_THRESHOLD", "40"))
 MIN_BRIGHTNESS = float(os.getenv("MIN_BRIGHTNESS", "35"))
 MAX_BRIGHTNESS = float(os.getenv("MAX_BRIGHTNESS", "225"))
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "Facenet512")
-# Initial engineering threshold. This must be calibrated on a held-out verification set before production use.
 EMBEDDING_DISTANCE_THRESHOLD = float(os.getenv("EMBEDDING_DISTANCE_THRESHOLD", "0.30"))
-# DeepFace anti-spoofing gate. Keep enabled for verification/attendance deployments.
-LIVENESS_ENABLED = os.getenv("LIVENESS_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+# Disabled by default because DeepFace's FasNet anti-spoofing requires PyTorch.
+# Enable explicitly with LIVENESS_ENABLED=true when the deployment includes torch.
+LIVENESS_ENABLED = os.getenv("LIVENESS_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
 
 for p in (DATA_DIR, KNOWN_FACES_DIR, TEMP_DIR):
     p.mkdir(parents=True, exist_ok=True)
