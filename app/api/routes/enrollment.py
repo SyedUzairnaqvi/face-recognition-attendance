@@ -5,6 +5,7 @@ import cv2
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.core.config import KNOWN_FACES_DIR, MAX_UPLOAD_BYTES
+from app.models.embedding_engine import build_embedding_index
 from app.services.quality_service import assess_image
 
 router = APIRouter(prefix="/enrollment", tags=["Enrollment"])
@@ -48,7 +49,7 @@ async def register(
     image_path.write_bytes(data)
 
     # Heavy DeepFace embedding generation is intentionally not run here.
-    # This keeps enrollment reliable on Render's free 512 MB instance.
+    # Use /enrollment/build-index after registration.
     return {
         "status": "registered",
         "name": clean_name,
@@ -56,5 +57,22 @@ async def register(
         "image_path": str(image_path),
         "quality": quality,
         "embedding_build": "pending",
-        "note": "Image registered successfully. Build the embedding index before recognition.",
+        "note": "Image registered successfully. Call /enrollment/build-index before recognition.",
     }
+
+
+@router.post("/build-index")
+def build_index():
+    """Build the face embedding index from all registered images."""
+    try:
+        result = build_embedding_index(KNOWN_FACES_DIR)
+        return {
+            "status": "ready",
+            "embedding_build": "complete",
+            **result,
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"reason": "embedding_build_failed", "error": str(exc)},
+        ) from exc
