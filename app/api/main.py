@@ -1,8 +1,13 @@
 from fastapi import FastAPI
 from app.db.database import init_db
 from app.api.routes import recognition, attendance, health, enrollment
+from app.core.config import KNOWN_FACES_DIR
+from app.core.seed_faces import ensure_seed_faces
 
+# Render Free has an ephemeral filesystem, so restore the demo enrollment image on startup.
+ensure_seed_faces(KNOWN_FACES_DIR)
 init_db()
+
 app = FastAPI(
     title="Secure Vision Attendance API",
     version="2.0.0",
