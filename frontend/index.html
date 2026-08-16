@@ -1,286 +1,90 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Vision Attendance</title>
-
-    <link
-        rel="stylesheet"
-        href="style.css"
-    >
-
+    <link rel="stylesheet" href="style.css">
 </head>
-
-
 <body>
-
 <div class="container">
-
-    <!-- =====================================================
-         HEADER
-    ====================================================== -->
-
     <header>
-
         <div>
-
-            <p class="eyebrow">
-                SECURE VISION
-            </p>
-
-            <h1>
-                Attendance Console
-            </h1>
-
-            <p class="subtitle">
-                Face verification, quality checks,
-                and duplicate-safe attendance.
-            </p>
-
+            <p class="eyebrow">SECURE VISION</p>
+            <h1>Attendance Console</h1>
+            <p class="subtitle">Face verification, video attendance, quality checks, and duplicate-safe attendance.</p>
         </div>
-
-
-        <div
-            id="api-status"
-            class="status-pill"
-        >
-            Checking API...
-        </div>
-
+        <div id="api-status" class="status-pill">Checking API...</div>
     </header>
 
-
-    <!-- =====================================================
-         MAIN GRID
-    ====================================================== -->
-
     <div class="grid">
-
-
-        <!-- =================================================
-             VERIFY ATTENDANCE
-        ================================================== -->
-
         <section class="card">
-
             <div class="card-header">
-
                 <div>
-
-                    <h2>
-                        Verify Attendance
-                    </h2>
-
-                    <p>
-                        Upload a clear face image
-                        to verify identity.
-                    </p>
-
+                    <h2>Verify Attendance</h2>
+                    <p>Upload a clear face image to verify identity.</p>
                 </div>
-
             </div>
-
-
-            <!-- IMAGE UPLOAD -->
-
-            <label
-                class="dropzone"
-                for="image-input"
-            >
-
-                <input
-                    id="image-input"
-                    type="file"
-                    accept="image/*"
-                >
-
-                <span class="drop-title">
-                    Choose an image
-                </span>
-
-                <span
-                    id="file-name"
-                    class="drop-subtitle"
-                >
-                    PNG, JPG, JPEG, WEBP
-                </span>
-
+            <label class="dropzone" for="image-input">
+                <input id="image-input" type="file" accept="image/*">
+                <span class="drop-title">Choose an image</span>
+                <span id="file-name" class="drop-subtitle">PNG, JPG, JPEG, WEBP</span>
             </label>
-
-
-            <!-- VERIFY BUTTON -->
-
-            <button
-                id="verify-btn"
-                class="primary-btn"
-                disabled
-            >
-                Verify & Mark Attendance
-            </button>
-
-
-            <!-- RESULT -->
-
-            <div
-                id="result"
-                class="result hidden"
-            ></div>
-
+            <button id="verify-btn" class="primary-btn" disabled>Verify & Mark Attendance</button>
+            <div id="result" class="result hidden"></div>
         </section>
 
-
-
-        <!-- =================================================
-             REGISTRATION
-        ================================================== -->
-
         <section class="card">
-
             <div class="card-header">
-
                 <div>
-
-                    <h2>
-                        Register New Person
-                    </h2>
-
-                    <p>
-                        Add a person's name and face
-                        to the recognition system.
-                    </p>
-
+                    <h2>Register New Person</h2>
+                    <p>Add a person's name and face to the recognition system.</p>
                 </div>
-
             </div>
-
-
-            <!-- NAME -->
-
-            <label
-                for="register-name"
-                class="field-label"
-            >
-                Person Name
+            <label for="register-name" class="field-label">Person Name</label>
+            <input id="register-name" class="text-input" type="text" placeholder="Enter person's name" autocomplete="off">
+            <label class="dropzone" for="register-image">
+                <input id="register-image" type="file" accept="image/*">
+                <span class="drop-title">Choose face image</span>
+                <span id="register-file-name" class="drop-subtitle">PNG, JPG, JPEG, WEBP</span>
             </label>
-
-
-            <input
-                id="register-name"
-                class="text-input"
-                type="text"
-                placeholder="Enter person's name"
-                autocomplete="off"
-            >
-
-
-            <!-- FACE IMAGE -->
-
-            <label
-                class="dropzone"
-                for="register-image"
-            >
-
-                <input
-                    id="register-image"
-                    type="file"
-                    accept="image/*"
-                >
-
-                <span class="drop-title">
-                    Choose face image
-                </span>
-
-                <span
-                    id="register-file-name"
-                    class="drop-subtitle"
-                >
-                    PNG, JPG, JPEG, WEBP
-                </span>
-
-            </label>
-
-
-            <!-- REGISTER BUTTON -->
-
-            <button
-                id="register-btn"
-                class="primary-btn"
-                disabled
-            >
-                Register Face
-            </button>
-
-
-            <!-- REGISTRATION RESULT -->
-
-            <div
-                id="register-result"
-                class="result hidden"
-            ></div>
-
+            <button id="register-btn" class="primary-btn" disabled>Register Face</button>
+            <div id="register-result" class="result hidden"></div>
         </section>
 
-
-
-        <!-- =================================================
-             TODAY'S ATTENDANCE
-        ================================================== -->
+        <section class="card">
+            <div class="card-header">
+                <div>
+                    <h2>Video Attendance</h2>
+                    <p>Upload a classroom video and automatically mark registered people.</p>
+                </div>
+            </div>
+            <label class="dropzone" for="video-input">
+                <input id="video-input" type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm">
+                <span class="drop-title">Choose a video</span>
+                <span id="video-file-name" class="drop-subtitle">MP4, MOV, AVI, MKV, WEBM</span>
+            </label>
+            <button id="video-btn" class="primary-btn" disabled>Upload Video & Mark Attendance</button>
+            <div id="video-result" class="result hidden"></div>
+            <p class="drop-subtitle">Current limit: 50 MB and 120 seconds.</p>
+        </section>
 
         <section class="card attendance-card">
-
             <div class="card-header">
-
                 <div>
-
-                    <h2>
-                        Today's Attendance
-                    </h2>
-
-                    <p>
-                        Attendance recorded by the API.
-                    </p>
-
+                    <h2>Today's Attendance</h2>
+                    <p>Attendance recorded by the API.</p>
                 </div>
-
-
-                <button
-                    id="refresh-btn"
-                    class="secondary-btn"
-                >
-                    Refresh
-                </button>
-
+                <button id="refresh-btn" class="secondary-btn">Refresh</button>
             </div>
-
-
-            <div
-                id="attendance"
-                class="table-wrap"
-            >
-
-                <div class="empty">
-                    Loading attendance...
-                </div>
-
+            <div id="attendance" class="table-wrap">
+                <div class="empty">Loading attendance...</div>
             </div>
-
         </section>
-
     </div>
-
 </div>
 
-
 <script src="app.js"></script>
-
+<script src="video.js"></script>
 </body>
-
 </html>
