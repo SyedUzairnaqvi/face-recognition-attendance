@@ -1,6 +1,12 @@
 import os
 from pathlib import Path
 
+# Keep TensorFlow as small and CPU-only as possible on low-memory Render instances.
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+os.environ.setdefault("TF_NUM_INTRAOP_THREADS", "1")
+os.environ.setdefault("TF_NUM_INTEROP_THREADS", "1")
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 KNOWN_FACES_DIR = DATA_DIR / "known_faces"
@@ -12,8 +18,11 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", "5000000"))
 QUALITY_BLUR_THRESHOLD = float(os.getenv("QUALITY_BLUR_THRESHOLD", "40"))
 MIN_BRIGHTNESS = float(os.getenv("MIN_BRIGHTNESS", "35"))
 MAX_BRIGHTNESS = float(os.getenv("MAX_BRIGHTNESS", "225"))
-# FaceNet is substantially lighter than FaceNet512 and is a better fit for Render Free.
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "Facenet")
+
+# Facenet is substantially lighter than Facenet512 and is the production-safe
+# embedding model for the 512 MB Render Free instance.
+_requested_model = os.getenv("EMBEDDING_MODEL_NAME", "Facenet")
+EMBEDDING_MODEL_NAME = "Facenet" if _requested_model.lower() == "facenet512" else _requested_model
 EMBEDDING_DISTANCE_THRESHOLD = float(os.getenv("EMBEDDING_DISTANCE_THRESHOLD", "0.30"))
 LIVENESS_ENABLED = os.getenv("LIVENESS_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
 
