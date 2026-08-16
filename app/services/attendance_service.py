@@ -28,9 +28,21 @@ def mark_attendance(
     brightness=None,
     method="Face Recognition",
 ):
+    """
+    Mark attendance for a recognized person.
 
+    The database layer handles:
+    - Person creation
+    - Duplicate attendance prevention
+    - MySQL insertion
+    """
+
+    # Get current time in India Standard Time
     now = datetime.now(IST)
 
+    # --------------------------------------------------------
+    # Save attendance in MySQL
+    # --------------------------------------------------------
 
     inserted = create_attendance(
         name=name,
@@ -54,9 +66,11 @@ def mark_attendance(
         method=method,
     )
 
+    # --------------------------------------------------------
+    # Return existing API response format
+    # --------------------------------------------------------
 
     return {
-
         "name": name,
 
         "date": now.strftime(
