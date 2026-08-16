@@ -3,12 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List
 
+import cv2
 import numpy as np
 from deepface import DeepFace
-from deepface.modules.exceptions import FaceNotDetected
 
-from app.core.config import EMBEDDING_INDEX_PATH, EMBEDDING_MODEL_NAME, EMBEDDING_DISTANCE_THRESHOLD, LIVENESS_ENABLED
+from app.core.config import (
+    EMBEDDING_INDEX_PATH,
+    EMBEDDING_MODEL_NAME,
+    EMBEDDING_DISTANCE_THRESHOLD,
+    LIVENESS_ENABLED,
+)
 from app.services.liveness_service import assess_liveness
+
+# OpenCV's bundled Haar cascade is much lighter than RetinaFace and avoids
+# downloading/loading another ~100 MB detector model on Render Free.
+_FACE_CASCADE = cv2.CascadeClassifier(
+    str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml")
+)
 
 
 def _cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
@@ -16,6 +27,49 @@ def _cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
     if denom == 0:
         return 1.0
     return float(1.0 - np.dot(a, b) / denom)
+
+
+def _detect_faces(image: np.ndarray) -> list[dict]:
+    """Detect faces with OpenCV without loading a separate detector model."""
+    if image is None or image.size == 0:
+        return []
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    boxes = _FACE_CASCADE.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(60, 60),
+    )
+
+    faces = []
+    for x, y, w, h in boxes:
+        faces.append({
+            "face": image[y:y + h, x:x + w],
+            "facial_area": {"x": int(x), "y": int(y), "w": int(w), "h": int(h)},
+        })
+    return faces
+
+
+def _embedding_from_face(face: np.ndarray) -> np.ndarray | None:
+    if face is None or face.size == 0:
+        return None
+
+    # Detector is already done by OpenCV, so DeepFace only runs the embedding
+    # model. This avoids RetinaFace and its large model footprint.
+    representations = DeepFace.represent(
+        img_path=face,
+        model_name=EMBEDDING_MODEL_NAME,
+        detector_backend="skip",
+        enforce_detection=False,
+    )
+    if not representations:
+        return None
+
+    embedding = np.asarray(representations[0]["embedding"], dtype=np.float32)
+    embedding /= max(np.linalg.norm(embedding), 1e-12)
+    return embedding
 
 
 def build_embedding_index(known_faces_dir: Path) -> dict:
@@ -32,24 +86,28 @@ def build_embedding_index(known_faces_dir: Path) -> dict:
     for image_path in files:
         relative_parts = image_path.relative_to(known_faces_dir).parts
         name = relative_parts[0] if len(relative_parts) > 1 else image_path.stem
+        image = cv2.imread(str(image_path))
 
+        if image is None:
+            print(f"Skipping invalid image: {image_path}")
+            continue
+
+        faces = _detect_faces(image)
+        if not faces:
+            print(f"Skipping {image_path}: no face detected")
+            continue
+
+        # Enrollment should contain one person; use the largest detected face.
+        face_obj = max(faces, key=lambda item: item["facial_area"]["w"] * item["facial_area"]["h"])
         try:
-            representations = DeepFace.represent(
-                img_path=str(image_path),
-                model_name=EMBEDDING_MODEL_NAME,
-                # RetinaFace avoids the OpenCV Haar Cascade failure seen on Render.
-                detector_backend="retinaface",
-                enforce_detection=True,
-            )
+            embedding = _embedding_from_face(face_obj["face"])
         except Exception as exc:
             print(f"Skipping {image_path}: {exc}")
             continue
 
-        if not representations:
+        if embedding is None:
             continue
 
-        embedding = np.asarray(representations[0]["embedding"], dtype=np.float32)
-        embedding /= max(np.linalg.norm(embedding), 1e-12)
         embeddings.append(embedding)
         names.append(name)
         sources.append(str(image_path))
@@ -92,52 +150,36 @@ def load_embedding_index() -> Dict[str, np.ndarray]:
     }
 
 
-def _extract_live_faces(img_path: str) -> list[dict]:
-    """Detect faces and run DeepFace's anti-spoofing model when enabled."""
-    try:
-        return DeepFace.extract_faces(
-            img_path=img_path,
-            # RetinaFace avoids the OpenCV Haar Cascade failure seen on Render.
-            detector_backend="retinaface",
-            enforce_detection=True,
-            align=True,
-            anti_spoofing=LIVENESS_ENABLED,
-        )
-    except FaceNotDetected:
-        return []
-
-
 def recognize_with_embeddings(img_path: str) -> List[dict]:
     index = load_embedding_index()
-    face_objects = _extract_live_faces(img_path)
+    image = cv2.imread(str(img_path))
+    face_objects = _detect_faces(image)
 
     results: List[dict] = []
     for face_obj in face_objects:
         facial_area = face_obj.get("facial_area", {})
-        liveness = assess_liveness(face_obj)
-        is_real = liveness["is_real"] if LIVENESS_ENABLED else True
 
-        if LIVENESS_ENABLED and not bool(is_real):
+        # Liveness remains intentionally disabled on the Render Free profile.
+        # Enabling it would require a separate anti-spoofing model and defeat
+        # the low-memory deployment target.
+        liveness = assess_liveness({})
+        if LIVENESS_ENABLED:
             results.append({
                 "name": "Unknown", "matched": False, "distance": None,
                 "threshold": EMBEDDING_DISTANCE_THRESHOLD, "match_score": 0,
                 "engine": "embedding_cosine", "model": EMBEDDING_MODEL_NAME,
                 "liveness": liveness, "face_box": facial_area,
-                "reason": "spoof_detected",
+                "reason": "liveness_requires_heavier_detector",
             })
             continue
 
-        face = face_obj["face"]
-        if face.dtype != np.uint8:
-            face = np.clip(face * 255.0, 0, 255).astype(np.uint8)
-        face_bgr = face[:, :, ::-1]
-        representations = DeepFace.represent(
-            img_path=face_bgr,
-            model_name=EMBEDDING_MODEL_NAME,
-            detector_backend="skip",
-            enforce_detection=False,
-        )
-        if not representations:
+        try:
+            query = _embedding_from_face(face_obj["face"])
+        except Exception as exc:
+            print(f"Embedding failed: {exc}")
+            query = None
+
+        if query is None:
             results.append({
                 "name": "Unknown", "matched": False, "distance": None,
                 "threshold": EMBEDDING_DISTANCE_THRESHOLD, "match_score": 0,
@@ -146,9 +188,6 @@ def recognize_with_embeddings(img_path: str) -> List[dict]:
                 "reason": "embedding_failed",
             })
             continue
-
-        query = np.asarray(representations[0]["embedding"], dtype=np.float32)
-        query /= max(np.linalg.norm(query), 1e-12)
 
         distances = np.array([_cosine_distance(query, row) for row in index["embeddings"]])
         best_idx = int(np.argmin(distances))
