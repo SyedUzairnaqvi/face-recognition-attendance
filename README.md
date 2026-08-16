@@ -1,115 +1,235 @@
-# Secure Vision-Based Attendance & Identity Verification Platform
+# Secure Vision Attendance
 
-An image-based attendance platform using computer vision and deep face recognition, exposed through a FastAPI REST API. The system adds image-quality gating, DeepFace anti-spoofing/liveness checks, cached face embeddings, explicit similarity-threshold decisions, SQLite-backed attendance records, and database-level duplicate prevention.
+A deployable computer-vision attendance platform that combines face enrollment, image verification, video-based attendance, quality checks, embedding-based matching, and duplicate-safe attendance records behind a FastAPI API and lightweight web dashboard.
 
-## Problem
+**Live demo:** https://secure-vision-attendance-1.onrender.com/
 
-Manual attendance and basic image-based recognition systems can be slow, difficult to audit, and vulnerable to duplicate check-ins or unreliable recognition under poor image conditions. This project focuses on building a practical verification workflow rather than treating face recognition as a single prediction step.
+**API documentation:** https://secure-vision-attendance.onrender.com/docs
 
-## Current pipeline
+## What problem does it solve?
+
+Manual attendance is repetitive and difficult to audit. Basic face-recognition demos often stop at “predict a name” and do not handle image quality, repeated check-ins, persistence, enrollment, or video input.
+
+Secure Vision turns recognition into an attendance workflow:
 
 ```text
-Uploaded image
-  -> Image validation
-  -> Blur/brightness quality check
-  -> Face detection + liveness / anti-spoofing
-  -> Face embedding extraction
-  -> Cosine similarity against registered embeddings
-  -> Similarity-threshold decision
-  -> Attendance business rule
-  -> SQLite persistence
-  -> REST API response
+Image / Video Upload
+        |
+        v
+Input + file validation
+        |
+        v
+Image quality checks / face detection
+        |
+        v
+Face embedding extraction (OpenFace)
+        |
+        v
+Cosine-distance matching
+        |
+        +---- match ----> attendance business rules
+        |                         |
+        |                         v
+        |                    SQLite record
+        |
+        +---- no match --> Unknown / not marked
 ```
 
-## Features implemented
+For video attendance, the system samples frames, recognizes faces in each sampled frame, deduplicates recognized people, and records each person at most once per day.
 
-- OpenCV-based image validation and quality scoring
-- DeepFace `Facenet512` face embeddings
-- Cached embedding index stored as compressed NumPy data
-- Cosine-distance identity matching
-- Explicit threshold-based match decisions
-- Threshold-relative match score (not a calibrated probability)
-- Duplicate attendance prevention using a database UNIQUE constraint on `(name, date)`
-- SQLite persistence instead of a mutable CSV file
-- REST endpoints for recognition and attendance history
-- FastAPI Swagger documentation
+## Key features
+
+- Face enrollment with image-quality validation
+- Face verification through a REST API
+- Video attendance for MP4, MOV, AVI, MKV, and WEBM uploads
+- OpenFace embeddings with a cached NumPy index
+- Cosine-distance matching with a configurable threshold
+- Threshold-relative match score for UI feedback
+- SQLite attendance persistence
+- Database-level duplicate prevention using `UNIQUE(name, date)`
+- Separate attendance methods: `Face Recognition` and `Video Recognition`
+- Today's attendance dashboard with name, time, status, and method
 - Health endpoint reporting embedding-index readiness
-- Upload-size and content-type validation
-- Temporary-file cleanup
-- DeepFace anti-spoofing gate before identity matching
-- Multi-face processing in a single image
-- Per-face liveness result and spoof rejection reason
+- Background embedding-index rebuild after enrollment
+- Upload-size and video-duration limits
+- Temporary-file cleanup after processing
+- FastAPI Swagger/OpenAPI documentation
+- Docker configuration for local/container deployment
+- Automated tests for core database, quality, and liveness components
 
-## Build the embedding index
+## API endpoints
 
-Place registered images under `data/known_faces/`.
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/health` | Service and embedding-index health |
+| POST | `/recognition/verify` | Verify faces in an image and mark attendance |
+| POST | `/recognition/video` | Process a video and mark recognized people |
+| GET | `/attendance` | Retrieve attendance records |
+| GET | `/attendance/today` | Retrieve today's attendance |
+| POST | `/enrollment/register` | Register a person's face image |
+| POST | `/enrollment/build-index` | Start embedding-index rebuild |
+| GET | `/enrollment/build-index/status` | Check index-build status |
+| GET | `/docs` | Interactive Swagger UI |
 
-For multiple images per person, the recommended layout is:
+## Recognition logic
+
+The application extracts an embedding for each detected face and compares it with the registered embedding index using cosine distance. A face is accepted when its distance is at or below `EMBEDDING_DISTANCE_THRESHOLD` (default `0.30`).
+
+The displayed match score is **threshold-relative UI feedback, not a calibrated probability or accuracy percentage**. The threshold should be validated against a representative verification dataset before any high-stakes deployment.
+
+## Video processing
+
+Video uploads are constrained by environment-configurable limits:
+
+- Maximum upload size: 50 MB by default
+- Maximum duration: 120 seconds by default
+- Sampling rate: 1 frame/second by default
+
+Only unique recognized people are added to the video result, and the database prevents another attendance record for the same person on the same date.
+
+## Project structure
 
 ```text
-data/known_faces/
-  Uzair/
-    image1.jpg
-    image2.jpg
-  Alice/
-    image1.jpg
-    image2.jpg
+secure-vision-attendance/
+├── app/
+│   ├── api/                 # FastAPI application and routes
+│   ├── core/                # Configuration and seed-face handling
+│   ├── db/                  # SQLite schema and CRUD operations
+│   ├── models/              # Embedding and recognition logic
+│   ├── services/            # Attendance, quality, and liveness services
+│   └── utils/
+├── data/
+│   ├── known_faces/         # Local enrollment images
+│   └── face_embeddings.npz  # Local/deployment embedding artifact
+├── frontend/                # HTML/CSS/JS dashboard
+├── docker/                  # Docker configuration
+├── scripts/                 # Index building, migration, benchmark helpers
+├── tests/                   # Automated tests
+├── docs/                    # Architecture and security documentation
+├── Procfile                 # Render/Heroku-style process definition
+└── requirements.txt
 ```
-
-Then run:
-
-```bash
-python scripts/build_embeddings.py
-```
-
-The generated `data/face_embeddings.npz` is a local artifact and should not be committed if it contains real biometric data.
 
 ## Run locally
 
+### 1. Create an environment
+
 ```bash
 python -m venv .venv
-.venv\\Scripts\\activate
+.venv\\Scripts\\activate       # Windows PowerShell
+# source .venv/bin/activate     # macOS/Linux
+```
+
+### 2. Install dependencies
+
+```bash
 pip install -r requirements.txt
-python scripts/build_embeddings.py
+```
+
+For development/testing:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+### 3. Start the API
+
+```bash
 uvicorn app.api.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/docs`.
+The API will be available at `http://127.0.0.1:8000`.
 
-## API
+### 4. Start the frontend
 
-- `GET /health`
-- `POST /recognition/verify`
-- `GET /attendance`
-- `GET /attendance/today`
-- `GET /docs`
+From another terminal:
 
-## Recognition decision
+```bash
+cd frontend
+python -m http.server 5500
+```
 
-The system uses cosine distance between the query embedding and registered embeddings. A match is accepted when the distance is below the configured threshold.
+Open `http://localhost:5500`.
 
-The current default threshold is an **engineering starting point**, not a validated production threshold. It must be calibrated using a held-out verification dataset before deployment.
+The local frontend automatically targets `http://127.0.0.1:8000`.
 
-## Evaluation plan
+## Enrollment and embedding index
 
-Before making performance claims, benchmark:
+Registered face images are stored under `data/known_faces/` and the embedding index is generated from them.
 
-- identification/verification precision, recall and F1
-- false acceptance rate (FAR)
-- false rejection rate (FRR)
-- recognition latency
-- quality rejection rate under blur/lighting changes
-- duplicate-prevention correctness
-- threshold sensitivity
+Recommended layout:
 
-## Security notes and limitations
+```text
+data/known_faces/
+├── Uzair/
+│   ├── image1.jpg
+│   └── image2.jpg
+└── Person2/
+    └── image1.jpg
+```
 
-This version now includes a DeepFace anti-spoofing/liveness gate before identity matching. DeepFace exposes an `anti_spoofing=True` mode that returns an `is_real` result and an anti-spoofing score; this project rejects a face before identity matching when the liveness gate reports a spoof.
+Build manually when needed:
 
-The liveness gate improves protection against simple photo/screen presentation attacks, but it is **not a guarantee against every presentation attack** and must be evaluated on representative spoof data before production deployment.
+```bash
+python scripts/build_embeddings.py
+```
 
-The application is still image-based rather than a dedicated webcam product. It also does not claim PostgreSQL, JWT authentication, FAISS, or calibrated recognition probabilities. The recognition threshold remains an engineering starting point and should be calibrated using a held-out verification dataset.
+The deployed application also supports rebuilding the index through the enrollment API.
 
-## Responsible use
+## Configuration
 
-Facial data is biometric information. A production deployment should use explicit consent, access control, encryption, retention/deletion policies, audit logs, and appropriate organizational/legal review.
+The main runtime settings are environment variables. See `.env.example` for the supported values.
+
+Important settings include:
+
+- `MAX_UPLOAD_BYTES`
+- `MAX_VIDEO_UPLOAD_BYTES`
+- `MAX_VIDEO_SECONDS`
+- `VIDEO_SAMPLE_FPS`
+- `EMBEDDING_DISTANCE_THRESHOLD`
+- `QUALITY_BLUR_THRESHOLD`
+- `MIN_BRIGHTNESS`
+- `MAX_BRIGHTNESS`
+- `LIVENESS_ENABLED`
+
+The production configuration currently uses the lighter `OpenFace` embedding model to keep memory usage practical on a low-resource deployment.
+
+## Testing
+
+Run:
+
+```bash
+pytest -q
+```
+
+The test suite covers core database duplicate prevention and service-level quality/liveness behavior. Recognition accuracy should be evaluated separately with a representative dataset.
+
+## Security and responsible use
+
+Facial embeddings and face images are biometric data. Do not use this demo as-is for high-stakes identity decisions.
+
+Before a real deployment, add appropriate authentication/authorization, HTTPS-only access, encrypted storage, retention/deletion controls, audit logging, consent and privacy processes, and a validated recognition threshold. See [`SECURITY.md`](SECURITY.md).
+
+The liveness service is present as a configurable component; `LIVENESS_ENABLED` should only be enabled after validating its behavior and resource requirements for the target deployment.
+
+## Limitations
+
+- The default similarity threshold is an engineering setting, not a scientifically validated operating point.
+- A match score is not a probability of identity.
+- Video recognition is frame-sampling based rather than continuous tracking.
+- SQLite is appropriate for this portfolio/deployment scale, not a high-concurrency production workload.
+- The current public demo should use synthetic/test enrollment data rather than sensitive real-world biometric data.
+
+## Next production upgrades
+
+1. Authentication and role-based access control
+2. PostgreSQL or another managed production database
+3. Encrypted biometric storage and key management
+4. Calibrated FAR/FRR evaluation and threshold selection
+5. Stronger presentation-attack evaluation
+6. Structured audit logs and monitoring
+7. Background job processing for long videos
+
+## License
+
+This repository is intended as a portfolio/educational project. Add an explicit open-source license before redistributing the code or allowing third-party reuse.
