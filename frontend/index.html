@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Secure Vision Attendance</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">SECURE VISION</p>
+        <h1>Attendance Console</h1>
+        <p class="subtitle">Face verification, quality checks, and duplicate-safe attendance.</p>
+      </div>
+      <div id="api-status" class="status-pill">Checking API…</div>
+    </header>
+
+    <section class="grid">
+      <article class="card verify-card">
+        <div class="card-header">
+          <div>
+            <h2>Verify attendance</h2>
+            <p>Upload a clear face image to verify identity.</p>
+          </div>
+        </div>
+
+        <label class="dropzone" for="image-input">
+          <input id="image-input" type="file" accept="image/*" />
+          <span class="drop-title">Choose an image</span>
+          <span id="file-name" class="drop-subtitle">PNG, JPG, JPEG, WEBP</span>
+        </label>
+
+        <button id="verify-btn" class="primary-btn" disabled>Verify & Mark Attendance</button>
+        <div id="result" class="result hidden"></div>
+      </article>
+
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2>Today</h2>
+            <p>Attendance recorded by the API.</p>
+          </div>
+          <button id="refresh-btn" class="secondary-btn">Refresh</button>
+        </div>
+        <div id="attendance" class="table-wrap">
+          <div class="empty">Loading attendance…</div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
