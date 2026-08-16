@@ -1,301 +1,411 @@
-const API_BASE = "https://secure-vision-attendance.onrender.com";
-
 // ============================================================
-// VERIFY ELEMENTS
+// API BASE
 // ============================================================
 
-const imageInput = document.getElementById("image-input");
-const fileName = document.getElementById("file-name");
-const verifyBtn = document.getElementById("verify-btn");
-const resultBox = document.getElementById("result");
+const API_BASE =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+        ? "http://127.0.0.1:8000"
+        : "https://secure-vision-attendance.onrender.com";
 
-const attendanceBox = document.getElementById("attendance");
-const refreshBtn = document.getElementById("refresh-btn");
-const apiStatus = document.getElementById("api-status");
 
 // ============================================================
-// REGISTRATION ELEMENTS
+// ELEMENTS
 // ============================================================
 
-const registerName = document.getElementById("register-name");
-const registerImage = document.getElementById("register-image");
-const registerFileName = document.getElementById("register-file-name");
-const registerBtn = document.getElementById("register-btn");
-const registerResult = document.getElementById("register-result");
+const imageInput =
+    document.getElementById("image-input");
+
+const fileName =
+    document.getElementById("file-name");
+
+const verifyBtn =
+    document.getElementById("verify-btn");
+
+const resultBox =
+    document.getElementById("result");
+
+const attendanceBox =
+    document.getElementById("attendance");
+
+const refreshBtn =
+    document.getElementById("refresh-btn");
+
+const apiStatus =
+    document.getElementById("api-status");
+
 
 // ============================================================
-// BACKEND HEALTH
+// REGISTRATION
+// ============================================================
+
+const registerName =
+    document.getElementById("register-name");
+
+const registerImage =
+    document.getElementById("register-image");
+
+const registerFileName =
+    document.getElementById("register-file-name");
+
+const registerBtn =
+    document.getElementById("register-btn");
+
+const registerResult =
+    document.getElementById("register-result");
+
+
+// ============================================================
+// HEALTH
 // ============================================================
 
 async function checkHealth() {
 
-    apiStatus.textContent = "Checking API...";
+    apiStatus.textContent =
+        "Checking API...";
 
     try {
 
-        const response = await fetch(`${API_BASE}/health`);
+        const response =
+            await fetch(
+                `${API_BASE}/health`
+            );
+
 
         if (!response.ok) {
-            throw new Error("Backend unavailable");
+
+            throw new Error(
+                "Backend unavailable"
+            );
         }
 
-        const data = await response.json();
 
-        if (data.status === "ok") {
-            apiStatus.textContent = "API Online";
-        } else {
-            apiStatus.textContent = "API Issue";
-        }
+        const data =
+            await response.json();
 
-    } catch (error) {
 
-        apiStatus.textContent = "API Offline";
+        apiStatus.textContent =
+            data.status === "ok"
+                ? "API Online"
+                : "API Issue";
+
+
+    } catch {
+
+        apiStatus.textContent =
+            "API Offline";
     }
 }
 
 
 // ============================================================
-// VERIFY IMAGE SELECTION
+// IMAGE SELECTION
 // ============================================================
 
-imageInput.addEventListener("change", () => {
+imageInput.addEventListener(
+    "change",
+    () => {
 
-    const file = imageInput.files[0];
+        const file =
+            imageInput.files[0];
 
-    if (file) {
 
-        fileName.textContent = file.name;
-        verifyBtn.disabled = false;
+        if (file) {
 
-    } else {
+            fileName.textContent =
+                file.name;
 
-        fileName.textContent = "PNG, JPG, JPEG, WEBP";
-        verifyBtn.disabled = true;
+            verifyBtn.disabled =
+                false;
+
+        } else {
+
+            fileName.textContent =
+                "PNG, JPG, JPEG, WEBP";
+
+            verifyBtn.disabled =
+                true;
+        }
     }
-});
+);
 
 
 // ============================================================
-// VERIFY FACE
+// VERIFY
 // ============================================================
 
-verifyBtn.addEventListener("click", async () => {
+verifyBtn.addEventListener(
+    "click",
+    async () => {
 
-    const file = imageInput.files[0];
-
-    if (!file) {
-        return;
-    }
-
-    verifyBtn.disabled = true;
-    verifyBtn.textContent = "Verifying...";
-
-    resultBox.className = "result";
-
-    resultBox.innerHTML = `
-        <div class="result-title">
-            Processing image...
-        </div>
-
-        <div class="result-detail">
-            Running quality checks and face recognition.
-        </div>
-    `;
-
-    const formData = new FormData();
-
-    formData.append("file", file);
-
-    try {
-
-        const response = await fetch(
-            `${API_BASE}/recognition/verify`,
-            {
-                method: "POST",
-                body: formData
-            }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(
-                data.detail || "Verification failed"
-            );
-        }
+        const file =
+            imageInput.files[0];
 
 
-        // ----------------------------------------------------
-        // IMAGE QUALITY REJECTED
-        // ----------------------------------------------------
-
-        if (data.status === "rejected") {
-
-            const issues =
-                data.quality?.issues?.join(", ") ||
-                data.reason ||
-                "Image rejected";
-
-            resultBox.className = "result error";
-
-            resultBox.innerHTML = `
-                <div class="result-title">
-                    Image Rejected
-                </div>
-
-                <div class="result-detail">
-                    ${issues}
-                </div>
-            `;
-
+        if (!file) {
             return;
         }
 
 
-        const recognition = data.recognitions?.[0];
-
-
-        // ----------------------------------------------------
-        // NO FACE
-        // ----------------------------------------------------
-
-        if (!recognition) {
-
-            resultBox.className = "result error";
-
-            resultBox.innerHTML = `
-                <div class="result-title">
-                    No Face Recognized
-                </div>
-
-                <div class="result-detail">
-                    Try another clear image.
-                </div>
-            `;
-
-            return;
-        }
-
-
-        // ----------------------------------------------------
-        // UNKNOWN PERSON
-        // ----------------------------------------------------
-
-        if (!recognition.matched) {
-
-            resultBox.className = "result error";
-
-            resultBox.innerHTML = `
-                <div class="result-title">
-                    Unknown Person
-                </div>
-
-                <div class="result-detail">
-                    No registered identity matched this face.
-                    <br><br>
-                    Distance:
-                    ${recognition.distance}
-                </div>
-            `;
-
-            return;
-        }
-
-
-        // ----------------------------------------------------
-        // SUCCESSFUL RECOGNITION
-        // ----------------------------------------------------
-
-        const attendance = data.attendance?.[0];
-
-        resultBox.className = "result success";
-
-        resultBox.innerHTML = `
-            <div class="result-title">
-                ${recognition.name} Verified
-            </div>
-
-            <div class="result-detail">
-
-                Match score:
-                ${recognition.match_score}%
-
-                <br>
-
-                Model:
-                ${recognition.model}
-
-                <br>
-
-                Attendance:
-                ${attendance?.status || "processed"}
-
-            </div>
-        `;
-
-        await loadAttendance();
-
-    } catch (error) {
-
-        resultBox.className = "result error";
-
-        resultBox.innerHTML = `
-            <div class="result-title">
-                Verification Error
-            </div>
-
-            <div class="result-detail">
-                ${error.message}
-            </div>
-        `;
-
-    } finally {
-
-        verifyBtn.disabled = false;
+        verifyBtn.disabled =
+            true;
 
         verifyBtn.textContent =
-            "Verify & Mark Attendance";
+            "Verifying...";
+
+
+        resultBox.className =
+            "result";
+
+
+        resultBox.innerHTML = `
+            <div class="result-title">
+                Processing image...
+            </div>
+
+            <div class="result-detail">
+                Running quality checks and face recognition.
+            </div>
+        `;
+
+
+        const formData =
+            new FormData();
+
+        formData.append(
+            "file",
+            file
+        );
+
+
+        try {
+
+            const response =
+                await fetch(
+                    `${API_BASE}/recognition/verify`,
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data.detail ||
+                    "Verification failed"
+                );
+            }
+
+
+            // ------------------------------------------------
+            // QUALITY REJECTED
+            // ------------------------------------------------
+
+            if (
+                data.status ===
+                "rejected"
+            ) {
+
+                const issues =
+                    data.quality?.issues?.join(
+                        ", "
+                    ) ||
+                    data.reason ||
+                    "Image rejected";
+
+
+                resultBox.className =
+                    "result error";
+
+
+                resultBox.innerHTML = `
+                    <div class="result-title">
+                        Image Rejected
+                    </div>
+
+                    <div class="result-detail">
+                        ${issues}
+                    </div>
+                `;
+
+                return;
+            }
+
+
+            const recognition =
+                data.recognitions?.[0];
+
+
+            if (!recognition) {
+
+                resultBox.className =
+                    "result error";
+
+
+                resultBox.innerHTML = `
+                    <div class="result-title">
+                        No Face Recognized
+                    </div>
+
+                    <div class="result-detail">
+                        Try another clear image.
+                    </div>
+                `;
+
+                return;
+            }
+
+
+            // ------------------------------------------------
+            // UNKNOWN
+            // ------------------------------------------------
+
+            if (!recognition.matched) {
+
+                resultBox.className =
+                    "result error";
+
+
+                resultBox.innerHTML = `
+                    <div class="result-title">
+                        Unknown Person
+                    </div>
+
+                    <div class="result-detail">
+                        No registered identity matched this face.
+                    </div>
+                `;
+
+                return;
+            }
+
+
+            // ------------------------------------------------
+            // SUCCESS
+            // ------------------------------------------------
+
+            const attendance =
+                data.attendance?.[0];
+
+
+            resultBox.className =
+                "result success";
+
+
+            resultBox.innerHTML = `
+                <div class="result-title">
+                    ${recognition.name} Verified
+                </div>
+
+                <div class="result-detail">
+
+                    Match score:
+                    ${recognition.match_score}%
+
+                    <br>
+
+                    Model:
+                    ${recognition.model}
+
+                    <br>
+
+                    Attendance:
+                    ${attendance?.status || "processed"}
+
+                </div>
+            `;
+
+
+            await loadAttendance();
+
+
+        } catch (error) {
+
+            resultBox.className =
+                "result error";
+
+
+            resultBox.innerHTML = `
+                <div class="result-title">
+                    Verification Error
+                </div>
+
+                <div class="result-detail">
+                    ${error.message}
+                </div>
+            `;
+
+
+        } finally {
+
+            verifyBtn.disabled =
+                false;
+
+            verifyBtn.textContent =
+                "Verify & Mark Attendance";
+        }
     }
-});
+);
 
 
 // ============================================================
-// REGISTRATION IMAGE SELECTION
+// REGISTRATION IMAGE
 // ============================================================
 
-registerImage.addEventListener("change", () => {
+registerImage.addEventListener(
+    "change",
+    () => {
 
-    const file = registerImage.files[0];
+        const file =
+            registerImage.files[0];
 
-    if (file) {
 
-        registerFileName.textContent = file.name;
+        if (file) {
 
-        updateRegisterButton();
+            registerFileName.textContent =
+                file.name;
 
-    } else {
+            updateRegisterButton();
 
-        registerFileName.textContent =
-            "PNG, JPG, JPEG, WEBP";
+        } else {
 
-        registerBtn.disabled = true;
+            registerFileName.textContent =
+                "PNG, JPG, JPEG, WEBP";
+
+            registerBtn.disabled =
+                true;
+        }
     }
-});
+);
 
 
 // ============================================================
-// ENABLE REGISTER BUTTON ONLY WHEN BOTH ARE PROVIDED
+// REGISTER BUTTON
 // ============================================================
 
-registerName.addEventListener("input", updateRegisterButton);
+registerName.addEventListener(
+    "input",
+    updateRegisterButton
+);
+
 
 function updateRegisterButton() {
 
-    const name = registerName.value.trim();
+    const name =
+        registerName.value.trim();
 
-    const file = registerImage.files[0];
+    const file =
+        registerImage.files[0];
 
-    registerBtn.disabled = !(name && file);
+
+    registerBtn.disabled =
+        !(name && file);
 }
 
 
@@ -303,213 +413,202 @@ function updateRegisterButton() {
 // REGISTER FACE
 // ============================================================
 
-registerBtn.addEventListener("click", async () => {
+registerBtn.addEventListener(
+    "click",
+    async () => {
 
-    const name = registerName.value.trim();
+        const name =
+            registerName.value.trim();
 
-    const file = registerImage.files[0];
-
-    if (!name || !file) {
-        return;
-    }
-
-    registerBtn.disabled = true;
-
-    registerBtn.textContent = "Registering...";
-
-    registerResult.className = "result";
-
-    registerResult.innerHTML = `
-        <div class="result-title">
-            Registering ${name}...
-        </div>
-
-        <div class="result-detail">
-            Checking image quality and saving the face.
-        </div>
-    `;
-
-    try {
-
-        // ----------------------------------------------------
-        // STEP 1: REGISTER IMAGE
-        // ----------------------------------------------------
-
-        const formData = new FormData();
-
-        formData.append("file", file);
-
-        const registerResponse = await fetch(
-            `${API_BASE}/enrollment/register?name=${encodeURIComponent(name)}`,
-            {
-                method: "POST",
-                body: formData
-            }
-        );
-
-        const registerData =
-            await registerResponse.json();
+        const file =
+            registerImage.files[0];
 
 
-        if (!registerResponse.ok) {
-
-            let message = "Registration failed.";
-
-            if (typeof registerData.detail === "string") {
-                message = registerData.detail;
-            }
-
-            else if (
-                registerData.detail &&
-                registerData.detail.quality
-            ) {
-
-                const issues =
-                    registerData.detail.quality.issues || [];
-
-                message =
-                    issues.join(", ") ||
-                    "Image quality rejected.";
-            }
-
-            throw new Error(message);
+        if (!name || !file) {
+            return;
         }
 
 
-        // ----------------------------------------------------
-        // STEP 2: START EMBEDDING INDEX BUILD
-        // ----------------------------------------------------
-
-        registerResult.innerHTML = `
-            <div class="result-title">
-                Face Saved
-            </div>
-
-            <div class="result-detail">
-                Building the face recognition index...
-            </div>
-        `;
-
-
-        const buildResponse = await fetch(
-            `${API_BASE}/enrollment/build-index`,
-            {
-                method: "POST"
-            }
-        );
-
-
-        const buildData =
-            await buildResponse.json();
-
-
-        if (!buildResponse.ok) {
-
-            throw new Error(
-                buildData.detail ||
-                "Could not start embedding build."
-            );
-        }
-
-
-        // ----------------------------------------------------
-        // STEP 3: WAIT FOR INDEX
-        // ----------------------------------------------------
-
-        await waitForIndex();
-
-
-        // ----------------------------------------------------
-        // SUCCESS
-        // ----------------------------------------------------
-
-        registerResult.className =
-            "result success";
-
-        registerResult.innerHTML = `
-            <div class="result-title">
-                ${registerData.name} Registered Successfully
-            </div>
-
-            <div class="result-detail">
-
-                Face image saved successfully.
-
-                <br>
-
-                Embedding index rebuilt successfully.
-
-                <br>
-
-                ${registerData.quality
-                    ? `Blur score: ${registerData.quality.blur_score}`
-                    : ""
-                }
-
-                <br><br>
-
-                You can now verify this person's face
-                using the Verify Attendance section.
-
-            </div>
-        `;
-
-
-        // Reset form
-
-        registerName.value = "";
-
-        registerImage.value = "";
-
-        registerFileName.textContent =
-            "PNG, JPG, JPEG, WEBP";
-
-        registerBtn.disabled = true;
-
-
-    } catch (error) {
-
-        registerResult.className =
-            "result error";
-
-        registerResult.innerHTML = `
-            <div class="result-title">
-                Registration Failed
-            </div>
-
-            <div class="result-detail">
-                ${error.message}
-            </div>
-        `;
-
-    } finally {
+        registerBtn.disabled =
+            true;
 
         registerBtn.textContent =
-            "Register Face";
+            "Registering...";
 
-        updateRegisterButton();
+
+        registerResult.className =
+            "result";
+
+
+        registerResult.innerHTML = `
+            <div class="result-title">
+                Registering ${name}...
+            </div>
+
+            <div class="result-detail">
+                Checking image quality and saving the face.
+            </div>
+        `;
+
+
+        try {
+
+            const formData =
+                new FormData();
+
+            formData.append(
+                "file",
+                file
+            );
+
+
+            const registerResponse =
+                await fetch(
+                    `${API_BASE}/enrollment/register?name=${encodeURIComponent(name)}`,
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+
+            const registerData =
+                await registerResponse.json();
+
+
+            if (!registerResponse.ok) {
+
+                throw new Error(
+                    registerData.detail ||
+                    "Registration failed."
+                );
+            }
+
+
+            registerResult.innerHTML = `
+                <div class="result-title">
+                    Face Saved
+                </div>
+
+                <div class="result-detail">
+                    Building the face recognition index...
+                </div>
+            `;
+
+
+            const buildResponse =
+                await fetch(
+                    `${API_BASE}/enrollment/build-index`,
+                    {
+                        method: "POST"
+                    }
+                );
+
+
+            const buildData =
+                await buildResponse.json();
+
+
+            if (!buildResponse.ok) {
+
+                throw new Error(
+                    buildData.detail ||
+                    "Could not start embedding build."
+                );
+            }
+
+
+            await waitForIndex();
+
+
+            registerResult.className =
+                "result success";
+
+
+            registerResult.innerHTML = `
+                <div class="result-title">
+                    ${registerData.name}
+                    Registered Successfully
+                </div>
+
+                <div class="result-detail">
+
+                    Face image saved successfully.
+
+                    <br>
+
+                    Embedding index rebuilt successfully.
+
+                </div>
+            `;
+
+
+            registerName.value =
+                "";
+
+            registerImage.value =
+                "";
+
+            registerFileName.textContent =
+                "PNG, JPG, JPEG, WEBP";
+
+            registerBtn.disabled =
+                true;
+
+
+        } catch (error) {
+
+            registerResult.className =
+                "result error";
+
+
+            registerResult.innerHTML = `
+                <div class="result-title">
+                    Registration Failed
+                </div>
+
+                <div class="result-detail">
+                    ${error.message}
+                </div>
+            `;
+
+
+        } finally {
+
+            registerBtn.textContent =
+                "Register Face";
+
+            updateRegisterButton();
+        }
     }
-});
+);
 
 
 // ============================================================
-// WAIT FOR EMBEDDING INDEX
+// WAIT FOR INDEX
 // ============================================================
 
 async function waitForIndex() {
 
-    const maxAttempts = 60;
+    for (
+        let attempt = 0;
+        attempt < 60;
+        attempt++
+    ) {
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-
-        await new Promise(resolve =>
-            setTimeout(resolve, 2000)
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    2000
+                )
         );
 
 
-        const response = await fetch(
-            `${API_BASE}/enrollment/build-index/status`
-        );
+        const response =
+            await fetch(
+                `${API_BASE}/enrollment/build-index/status`
+            );
 
 
         if (!response.ok) {
@@ -520,46 +619,29 @@ async function waitForIndex() {
         }
 
 
-        const data = await response.json();
+        const data =
+            await response.json();
 
 
-        // -----------------------------------------------
-        // INDEX READY
-        // -----------------------------------------------
-
-        if (data.status === "ready") {
+        if (
+            data.status ===
+            "ready"
+        ) {
 
             return;
         }
 
 
-        // -----------------------------------------------
-        // INDEX FAILED
-        // -----------------------------------------------
-
-        if (data.status === "failed") {
+        if (
+            data.status ===
+            "failed"
+        ) {
 
             throw new Error(
                 data.error ||
                 "Embedding index build failed."
             );
         }
-
-
-        // -----------------------------------------------
-        // STILL BUILDING
-        // -----------------------------------------------
-
-        registerResult.innerHTML = `
-            <div class="result-title">
-                Building Recognition Index...
-            </div>
-
-            <div class="result-detail">
-                Please wait. This can take a little while
-                when the AI model is loading.
-            </div>
-        `;
     }
 
 
@@ -570,7 +652,7 @@ async function waitForIndex() {
 
 
 // ============================================================
-// LOAD TODAY'S ATTENDANCE
+// TODAY'S ATTENDANCE
 // ============================================================
 
 async function loadAttendance() {
@@ -581,24 +663,34 @@ async function loadAttendance() {
         </div>
     `;
 
+
     try {
 
-        const response = await fetch(
-            `${API_BASE}/attendance/today`
-        );
+        const response =
+            await fetch(
+                `${API_BASE}/attendance/today`
+            );
+
 
         if (!response.ok) {
+
             throw new Error(
                 "Unable to load attendance"
             );
         }
 
-        const data = await response.json();
 
-        const records = data.records || [];
+        const data =
+            await response.json();
 
 
-        if (records.length === 0) {
+        const records =
+            data.records || [];
+
+
+        if (
+            records.length === 0
+        ) {
 
             attendanceBox.innerHTML = `
                 <div class="empty">
@@ -610,23 +702,54 @@ async function loadAttendance() {
         }
 
 
-        const rows = records.map(record => `
-            <tr>
+        // ====================================================
+        // NEW ATTENDANCE TABLE
+        // ====================================================
 
-                <td>
-                    ${record.name}
-                </td>
+        const rows =
+            records.map(
+                record => {
 
-                <td>
-                    ${record.time}
-                </td>
+                    const status =
+                        record.status ||
+                        "Present";
 
-                <td>
-                    ${record.match_distance}
-                </td>
 
-            </tr>
-        `).join("");
+                    const displayStatus =
+                        status ===
+                        "already_marked_today"
+                            ? "Already Marked"
+                            : "Present";
+
+
+                    const method =
+                        record.method ||
+                        "Face Recognition";
+
+
+                    return `
+                        <tr>
+
+                            <td>
+                                ${record.name}
+                            </td>
+
+                            <td>
+                                ${record.time}
+                            </td>
+
+                            <td>
+                                ${displayStatus}
+                            </td>
+
+                            <td>
+                                ${method}
+                            </td>
+
+                        </tr>
+                    `;
+                }
+            ).join("");
 
 
         attendanceBox.innerHTML = `
@@ -635,21 +758,30 @@ async function loadAttendance() {
                 <thead>
 
                     <tr>
+
                         <th>Name</th>
+
                         <th>Time</th>
-                        <th>Distance</th>
+
+                        <th>Status</th>
+
+                        <th>Method</th>
+
                     </tr>
 
                 </thead>
 
                 <tbody>
+
                     ${rows}
+
                 </tbody>
 
             </table>
         `;
 
-    } catch (error) {
+
+    } catch {
 
         attendanceBox.innerHTML = `
             <div class="empty">
@@ -661,7 +793,7 @@ async function loadAttendance() {
 
 
 // ============================================================
-// REFRESH ATTENDANCE
+// REFRESH
 // ============================================================
 
 refreshBtn.addEventListener(
@@ -671,7 +803,7 @@ refreshBtn.addEventListener(
 
 
 // ============================================================
-// INITIAL PAGE LOAD
+// INITIAL LOAD
 // ============================================================
 
 checkHealth();
