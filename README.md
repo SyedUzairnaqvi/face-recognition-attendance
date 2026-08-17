@@ -30,7 +30,7 @@ Cosine-distance matching
         +---- match ----> attendance business rules
         |                         |
         |                         v
-        |                    SQLite record
+        |                   MySQL record
         |
         +---- no match --> Unknown / not marked
 ```
@@ -45,7 +45,7 @@ For video attendance, the system samples frames, recognizes faces in each sample
 - OpenFace embeddings with a cached NumPy index
 - Cosine-distance matching with a configurable threshold
 - Threshold-relative match score for UI feedback
-- SQLite attendance persistence
+- MySQL 8 attendance persistence
 - Database-level duplicate prevention using `UNIQUE(name, date)`
 - Separate attendance methods: `Face Recognition` and `Video Recognition`
 - Today's attendance dashboard with name, time, status, and method
@@ -94,7 +94,7 @@ secure-vision-attendance/
 ├── app/
 │   ├── api/                 # FastAPI application and routes
 │   ├── core/                # Configuration and seed-face handling
-│   ├── db/                  # SQLite schema and CRUD operations
+│   ├── db/                  # MySQL connection and CRUD operations
 │   ├── models/              # Embedding and recognition logic
 │   ├── services/            # Attendance, quality, and liveness services
 │   └── utils/
@@ -217,13 +217,13 @@ The liveness service is present as a configurable component; `LIVENESS_ENABLED` 
 - The default similarity threshold is an engineering setting, not a scientifically validated operating point.
 - A match score is not a probability of identity.
 - Video recognition is frame-sampling based rather than continuous tracking.
-- SQLite is appropriate for this portfolio/deployment scale, not a high-concurrency production workload.
+- The application currently uses MySQL 8 with connection pooling and relational constraints; production deployment should use a managed and properly secured MySQL instance.
 - The current public demo should use synthetic/test enrollment data rather than sensitive real-world biometric data.
 
 ## Next production upgrades
 
 1. Authentication and role-based access control
-2. PostgreSQL or another managed production database
+2. Managed MySQL deployment and database hardening
 3. Encrypted biometric storage and key management
 4. Calibrated FAR/FRR evaluation and threshold selection
 5. Stronger presentation-attack evaluation
