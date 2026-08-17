@@ -27,6 +27,10 @@ from app.services.quality_service import (
     assess_image,
 )
 
+from app.db.crud import (
+    create_recognition_event,
+)
+
 
 router = APIRouter(
     prefix="/recognition",
@@ -100,7 +104,7 @@ async def verify(
 
 
         # ----------------------------------------------------
-        # QUALITY
+        # IMAGE QUALITY
         # ----------------------------------------------------
 
         quality = assess_image(
@@ -120,7 +124,7 @@ async def verify(
 
 
         # ----------------------------------------------------
-        # INDEX
+        # EMBEDDING INDEX
         # ----------------------------------------------------
 
         if not EMBEDDING_INDEX_PATH.exists():
@@ -136,7 +140,7 @@ async def verify(
 
 
         # ----------------------------------------------------
-        # RECOGNITION
+        # FACE RECOGNITION
         # ----------------------------------------------------
 
         try:
@@ -177,7 +181,7 @@ async def verify(
 
 
         # ----------------------------------------------------
-        # NO FACE
+        # NO FACE DETECTED
         # ----------------------------------------------------
 
         if not results:
@@ -192,7 +196,7 @@ async def verify(
 
 
         # ----------------------------------------------------
-        # ATTENDANCE
+        # ATTENDANCE + RECOGNITION EVENTS
         # ----------------------------------------------------
 
         attendance = []
@@ -200,19 +204,84 @@ async def verify(
 
         for result in results:
 
+            # ------------------------------------------------
+            # MATCHED FACE
+            # ------------------------------------------------
+
             if result["matched"]:
 
-                attendance.append(
-                    mark_attendance(
-                        result["name"],
-                        result["distance"],
-                        result["threshold"],
-                        quality["blur_score"],
-                        quality["brightness"],
-                        "Face Recognition",
-                    )
+                # IMPORTANT:
+                #
+                # Attendance is marked FIRST.
+                #
+                # mark_attendance() creates the person in
+                # persons if they don't already exist.
+                #
+                # This guarantees that the subsequent
+                # recognition event can resolve person_id.
+
+                attendance_record = mark_attendance(
+                    result["name"],
+                    result["distance"],
+                    result["threshold"],
+                    quality["blur_score"],
+                    quality["brightness"],
+                    "Face Recognition",
                 )
 
+                attendance.append(
+                    attendance_record
+                )
+
+
+                # ------------------------------------------------
+                # LOG MATCHED RECOGNITION EVENT
+                # ------------------------------------------------
+
+                create_recognition_event(
+                    name=result["name"],
+                    result="matched",
+                    match_score=result.get(
+                        "match_score"
+                    ),
+                    distance=result.get(
+                        "distance"
+                    ),
+                    threshold=result.get(
+                        "threshold"
+                    ),
+                    source="Image Recognition",
+                )
+
+
+            # ------------------------------------------------
+            # UNKNOWN FACE
+            # ------------------------------------------------
+
+            else:
+
+                # Unknown faces are logged as recognition
+                # events but are NOT given attendance.
+
+                create_recognition_event(
+                    name=None,
+                    result="unknown",
+                    match_score=result.get(
+                        "match_score"
+                    ),
+                    distance=result.get(
+                        "distance"
+                    ),
+                    threshold=result.get(
+                        "threshold"
+                    ),
+                    source="Image Recognition",
+                )
+
+
+        # ----------------------------------------------------
+        # RESPONSE
+        # ----------------------------------------------------
 
         return {
             "status": "processed",

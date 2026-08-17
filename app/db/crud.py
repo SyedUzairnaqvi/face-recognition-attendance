@@ -235,6 +235,147 @@ def create_attendance(
 
 
 # ============================================================
+# CREATE RECOGNITION EVENT
+# ============================================================
+
+def create_recognition_event(
+    name=None,
+    result="unknown",
+    match_score=None,
+    distance=None,
+    threshold=None,
+    source="Image Recognition",
+    video_filename=None,
+):
+    """
+    Store one face-recognition event.
+
+    Matched identities are linked to persons.person_id.
+
+    Unknown identities are allowed to have a NULL person_id.
+    """
+
+    with get_connection() as conn:
+
+        cursor = conn.cursor()
+
+        # ----------------------------------------------------
+        # Resolve person_id when the recognition matched
+        # ----------------------------------------------------
+
+        person_id = None
+
+        if name:
+
+            cursor.execute(
+                """
+                SELECT person_id
+                FROM persons
+                WHERE name = %s
+                LIMIT 1
+                """,
+                (name,),
+            )
+
+            person = cursor.fetchone()
+
+            if person:
+
+                person_id = person[0]
+
+        # ----------------------------------------------------
+        # Insert recognition event
+        # ----------------------------------------------------
+
+        cursor.execute(
+            """
+            INSERT INTO recognition_events
+            (
+                person_id,
+                result,
+                match_score,
+                distance,
+                threshold,
+                source,
+                video_filename
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                person_id,
+                result,
+                match_score,
+                distance,
+                threshold,
+                source,
+                video_filename,
+            ),
+        )
+
+        event_id = cursor.lastrowid
+
+        cursor.close()
+
+        return event_id
+
+
+# ============================================================
+# CREATE VIDEO SESSION
+# ============================================================
+
+def create_video_session(
+    filename,
+    duration_seconds=None,
+    frames_sampled=None,
+    faces_detected=None,
+    recognized_faces=None,
+    unknown_faces=None,
+    processing_status="Completed",
+):
+    """
+    Store one processed video session.
+
+    Returns:
+        video_id
+    """
+
+    with get_connection() as conn:
+
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO video_sessions
+            (
+                filename,
+                duration_seconds,
+                frames_sampled,
+                faces_detected,
+                recognized_faces,
+                unknown_faces,
+                processing_status
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                filename,
+                duration_seconds,
+                frames_sampled,
+                faces_detected,
+                recognized_faces,
+                unknown_faces,
+                processing_status,
+            ),
+        )
+
+        video_id = cursor.lastrowid
+
+        cursor.close()
+
+        return video_id
+
+
+# ============================================================
 # LIST ATTENDANCE
 # ============================================================
 

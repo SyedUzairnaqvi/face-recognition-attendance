@@ -26,6 +26,11 @@ from app.services.attendance_service import (
     mark_attendance,
 )
 
+from app.db.crud import (
+    create_recognition_event,
+    create_video_session,
+)
+
 
 router = APIRouter(
     prefix="/recognition",
@@ -70,7 +75,6 @@ async def _save_upload(
 
     total = 0
 
-
     with destination.open(
         "wb"
     ) as output:
@@ -81,15 +85,12 @@ async def _save_upload(
                 1024 * 1024
             )
 
-
             if not chunk:
                 break
-
 
             total += len(
                 chunk
             )
-
 
             if total > MAX_VIDEO_UPLOAD_BYTES:
 
@@ -108,11 +109,9 @@ async def _save_upload(
                     ),
                 )
 
-
             output.write(
                 chunk
             )
-
 
     return total
 
@@ -173,6 +172,12 @@ async def verify_video(
     # --------------------------------------------------------
     # SAVE VIDEO
     # --------------------------------------------------------
+
+    original_filename = (
+        file.filename
+        or "uploaded_video"
+    )
+
 
     video_path = (
         TEMP_DIR /
@@ -338,7 +343,7 @@ async def verify_video(
                 for result in results:
 
                     # ----------------------------------------
-                    # UNKNOWN
+                    # UNKNOWN FACE
                     # ----------------------------------------
 
                     if not result.get(
@@ -347,11 +352,54 @@ async def verify_video(
 
                         unknown_faces += 1
 
+                        create_recognition_event(
+                            name=None,
+                            result="unknown",
+                            match_score=result.get(
+                                "match_score"
+                            ),
+                            distance=result.get(
+                                "distance"
+                            ),
+                            threshold=result.get(
+                                "threshold"
+                            ),
+                            source="Video Recognition",
+                            video_filename=original_filename,
+                        )
+
                         continue
 
 
                     name = str(
                         result["name"]
+                    )
+
+
+                    # ----------------------------------------
+                    # LOG MATCHED RECOGNITION EVENT
+                    # ----------------------------------------
+                    #
+                    # We log every matched recognition
+                    # returned by the video frames.
+                    #
+                    # Attendance itself remains unique
+                    # per person.
+
+                    create_recognition_event(
+                        name=name,
+                        result="matched",
+                        match_score=result.get(
+                            "match_score"
+                        ),
+                        distance=result.get(
+                            "distance"
+                        ),
+                        threshold=result.get(
+                            "threshold"
+                        ),
+                        source="Video Recognition",
+                        video_filename=original_filename,
                     )
 
 
@@ -365,7 +413,7 @@ async def verify_video(
 
 
                     # ----------------------------------------
-                    # MARK ONCE
+                    # MARK ATTENDANCE ONCE
                     # ----------------------------------------
 
                     attendance = mark_attendance(
@@ -428,6 +476,33 @@ async def verify_video(
 
 
     # ========================================================
+    # SAVE VIDEO SESSION
+    # ========================================================
+
+    video_id = create_video_session(
+
+        filename=original_filename,
+
+        duration_seconds=round(
+            duration,
+            2,
+        ),
+
+        frames_sampled=sampled_frames,
+
+        faces_detected=faces_detected,
+
+        recognized_faces=len(
+            recognized_people
+        ),
+
+        unknown_faces=unknown_faces,
+
+        processing_status="Completed",
+    )
+
+
+    # ========================================================
     # RESPONSE
     # ========================================================
 
@@ -437,8 +512,11 @@ async def verify_video(
 
         "video": {
 
+            "video_id":
+                video_id,
+
             "filename":
-                file.filename,
+                original_filename,
 
             "duration_seconds":
                 round(
