@@ -250,9 +250,10 @@ def create_recognition_event(
     """
     Store one face-recognition event.
 
-    Matched identities are linked to persons.person_id.
+    Matched identities are always linked to a valid
+    persons.person_id.
 
-    Unknown identities are allowed to have a NULL person_id.
+    Unknown identities intentionally use NULL person_id.
     """
 
     with get_connection() as conn:
@@ -260,12 +261,16 @@ def create_recognition_event(
         cursor = conn.cursor()
 
         # ----------------------------------------------------
-        # Resolve person_id when the recognition matched
+        # Resolve person_id for matched recognition.
+        #
+        # A matched event must always point to a real person.
+        # If the person is not present yet, create the person
+        # here so the event cannot contain NULL person_id.
         # ----------------------------------------------------
 
         person_id = None
 
-        if name:
+        if result == "matched" and name:
 
             cursor.execute(
                 """
@@ -283,8 +288,26 @@ def create_recognition_event(
 
                 person_id = person[0]
 
+            else:
+
+                cursor.execute(
+                    """
+                    INSERT INTO persons
+                    (
+                        name
+                    )
+                    VALUES
+                    (
+                        %s
+                    )
+                    """,
+                    (name,),
+                )
+
+                person_id = cursor.lastrowid
+
         # ----------------------------------------------------
-        # Insert recognition event
+        # Unknown events intentionally remain unlinked.
         # ----------------------------------------------------
 
         cursor.execute(
