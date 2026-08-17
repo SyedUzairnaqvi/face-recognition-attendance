@@ -388,6 +388,10 @@ def list_attendance(
 
     If date is provided, return records for that date.
     Otherwise return the latest records.
+
+    MySQL TIME values are converted to HH:MM:SS strings
+    so FastAPI returns clean JSON instead of numeric
+    timedelta representations.
     """
 
     with get_connection() as conn:
@@ -445,5 +449,30 @@ def list_attendance(
         rows = cursor.fetchall()
 
         cursor.close()
+
+        # Convert MySQL TIME/timedelta values into HH:MM:SS strings.
+        for row in rows:
+
+            if row.get("time") is not None:
+
+                total_seconds = int(
+                    row["time"].total_seconds()
+                )
+
+                hours, remainder = divmod(
+                    total_seconds,
+                    3600,
+                )
+
+                minutes, seconds = divmod(
+                    remainder,
+                    60,
+                )
+
+                row["time"] = (
+                    f"{hours:02d}:"
+                    f"{minutes:02d}:"
+                    f"{seconds:02d}"
+                )
 
         return list(rows)
