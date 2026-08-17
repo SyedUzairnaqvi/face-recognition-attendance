@@ -10,7 +10,6 @@ os.environ.setdefault("TF_NUM_INTEROP_THREADS", "1")
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 KNOWN_FACES_DIR = DATA_DIR / "known_faces"
-DB_PATH = DATA_DIR / "attendance.db"
 TEMP_DIR = DATA_DIR / "tmp"
 EMBEDDING_INDEX_PATH = DATA_DIR / "face_embeddings.npz"
 
