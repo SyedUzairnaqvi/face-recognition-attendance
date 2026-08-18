@@ -15,7 +15,8 @@ const batchResult = document.getElementById("batch-result");
 const batchProgress = document.getElementById("batch-progress");
 const batchProgressText = document.getElementById("batch-progress-text");
 
-const BATCH_SIZE = 25;
+const MAX_BATCH_FILES = 50;
+const MAX_BATCH_BYTES = 45 * 1024 * 1024;
 const MAX_FILES = 50000;
 
 function showBatchResult(title, detail, type = "") {
@@ -30,6 +31,29 @@ function setProgress(done, total) {
     const percent = total ? Math.round((done / total) * 100) : 0;
     batchProgress.value = percent;
     batchProgressText.textContent = `${done.toLocaleString()} / ${total.toLocaleString()} images • ${percent}%`;
+}
+
+function buildChunks(files) {
+    const chunks = [];
+    let current = [];
+    let currentBytes = 0;
+
+    for (const file of files) {
+        const wouldExceedCount = current.length >= MAX_BATCH_FILES;
+        const wouldExceedBytes = current.length > 0 && currentBytes + file.size > MAX_BATCH_BYTES;
+
+        if (wouldExceedCount || wouldExceedBytes) {
+            chunks.push(current);
+            current = [];
+            currentBytes = 0;
+        }
+
+        current.push(file);
+        currentBytes += file.size;
+    }
+
+    if (current.length) chunks.push(current);
+    return chunks;
 }
 
 batchInput.addEventListener("change", () => {
@@ -47,18 +71,18 @@ batchInput.addEventListener("change", () => {
     }
 
     const imageFiles = files.filter(file => file.type.startsWith("image/"));
-    batchFileName.textContent = `${imageFiles.length.toLocaleString()} image(s) selected`;
+    batchFileName.textContent = `${imageFiles.length.toLocaleString()} image(s) selected • folder input supported`;
     batchButton.disabled = imageFiles.length === 0;
 });
 
 async function processChunk(files) {
-    const formData = new FormData();
-    files.forEach(file => formData.append("files", file, file.name));
-
     let lastError = null;
 
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
+            const formData = new FormData();
+            files.forEach(file => formData.append("files", file, file.name));
+
             const response = await fetch(`${BATCH_API_BASE}/recognition/batch-verify`, {
                 method: "POST",
                 body: formData,
@@ -86,6 +110,8 @@ batchButton.addEventListener("click", async () => {
 
     if (!files.length) return;
 
+    const chunks = buildChunks(files);
+
     batchButton.disabled = true;
     batchButton.textContent = "Processing...";
     batchProgress.value = 0;
@@ -93,7 +119,7 @@ batchButton.addEventListener("click", async () => {
 
     showBatchResult(
         "High-volume recognition started",
-        "Images are processed in safe chunks. Keep this tab open until completion."
+        `${files.length.toLocaleString()} images split into ${chunks.length.toLocaleString()} safe batches. Keep this tab open until completion.`
     );
 
     let processed = 0;
@@ -101,12 +127,11 @@ batchButton.addEventListener("click", async () => {
     let unknown = 0;
     let faces = 0;
     let events = 0;
-    let failedChunks = 0;
     const started = performance.now();
 
     try {
-        for (let start = 0; start < files.length; start += BATCH_SIZE) {
-            const chunk = files.slice(start, start + BATCH_SIZE);
+        for (let index = 0; index < chunks.length; index++) {
+            const chunk = chunks[index];
             const data = await processChunk(chunk);
 
             processed += chunk.length;
@@ -118,8 +143,8 @@ batchButton.addEventListener("click", async () => {
             setProgress(processed, files.length);
             showBatchResult(
                 `Processing ${Math.round((processed / files.length) * 100)}%`,
-                `${processed.toLocaleString()} images • ${faces.toLocaleString()} faces • ` +
-                `${matched.toLocaleString()} matched • ${unknown.toLocaleString()} unknown`
+                `Batch ${index + 1} / ${chunks.length} • ${processed.toLocaleString()} images • ` +
+                `${faces.toLocaleString()} faces • ${matched.toLocaleString()} matched • ${unknown.toLocaleString()} unknown`
             );
         }
 
@@ -131,15 +156,14 @@ batchButton.addEventListener("click", async () => {
             `${files.length.toLocaleString()} images processed in ${elapsed.toFixed(1)} seconds.<br>` +
             `${faces.toLocaleString()} faces • ${matched.toLocaleString()} matched • ` +
             `${unknown.toLocaleString()} unknown • ${events.toLocaleString()} events saved.<br>` +
-            `Average upload/processing throughput: ${rate.toFixed(1)} images/sec.`,
+            `Average end-to-end throughput: ${rate.toFixed(1)} images/sec.`,
             "success"
         );
     } catch (error) {
-        failedChunks += 1;
         showBatchResult(
             "Batch stopped",
             `${processed.toLocaleString()} of ${files.length.toLocaleString()} images completed. ` +
-            `You can retry the remaining set. ${error.message}`,
+            `Fix the reported issue and retry. ${error.message}`,
             "error"
         );
     } finally {
