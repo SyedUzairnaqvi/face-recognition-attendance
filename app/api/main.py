@@ -13,6 +13,7 @@ from app.api.routes import (
     health,
     enrollment,
     video,
+    analytics,
 )
 
 from app.core.config import (
@@ -52,9 +53,7 @@ def _index_is_compatible():
         ) as data:
 
             model = str(data["model"][0])
-
             embeddings = data["embeddings"]
-
             names = data["names"]
 
             return (
@@ -65,7 +64,6 @@ def _index_is_compatible():
             )
 
     except Exception:
-
         return False
 
 
@@ -76,17 +74,10 @@ def _index_is_compatible():
 def _auto_build_index():
 
     try:
-
-        result = build_embedding_index(
-            KNOWN_FACES_DIR
-        )
-
-        print(
-            f"Automatic embedding index build completed: {result}"
-        )
+        result = build_embedding_index(KNOWN_FACES_DIR)
+        print(f"Automatic embedding index build completed: {result}")
 
     except Exception as exc:
-
         print(
             f"Automatic embedding index build failed: "
             f"{type(exc).__name__}: {exc}"
@@ -133,26 +124,12 @@ app.add_middleware(
 # ROUTES
 # ============================================================
 
-app.include_router(
-    health.router
-)
-
-app.include_router(
-    recognition.router
-)
-
-app.include_router(
-    attendance.router
-)
-
-app.include_router(
-    enrollment.router
-)
-
-# Video attendance
-app.include_router(
-    video.router
-)
+app.include_router(health.router)
+app.include_router(recognition.router)
+app.include_router(attendance.router)
+app.include_router(enrollment.router)
+app.include_router(video.router)
+app.include_router(analytics.router)
 
 
 # ============================================================
