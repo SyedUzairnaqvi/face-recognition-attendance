@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Vision Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        *{box-sizing:border-box} body{margin:0;font-family:Inter,Arial,sans-serif;background:#f5f7fb;color:#18212f}
+        .wrap{max-width:1250px;margin:0 auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}
+        h1{margin:0 0 6px;font-size:30px}.sub{margin:0;color:#667085}.btn{border:0;border-radius:10px;padding:11px 16px;background:#18212f;color:white;text-decoration:none;cursor:pointer}
+        .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px}.card{background:white;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-shadow:0 3px 12px rgba(0,0,0,.04)}
+        .label{font-size:13px;color:#667085}.value{font-size:30px;font-weight:700;margin-top:8px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.wide{grid-column:1/-1}.chart{height:300px}
+        table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #eee;font-size:14px}th{color:#667085;font-weight:600}
+        .status{padding:10px 14px;border-radius:10px;background:#eef7ee;color:#287a35}.error{background:#fff0f0;color:#b42318;padding:14px;border-radius:10px}
+        @media(max-width:800px){.kpis{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.wide{grid-column:auto}}
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="top">
+        <div><h1>Secure Vision Analytics</h1><p class="sub">Live attendance, recognition and video analytics</p></div>
+        <div><span id="status" class="status">Loading...</span> <a class="btn" href="/">Attendance Console</a></div>
+    </div>
+
+    <div class="kpis">
+        <div class="card"><div class="label">Registered People</div><div id="people" class="value">—</div></div>
+        <div class="card"><div class="label">Attendance Records</div><div id="attendance" class="value">—</div></div>
+        <div class="card"><div class="label">Recognition Events</div><div id="events" class="value">—</div></div>
+        <div class="card"><div class="label">Recognition Rate</div><div id="rate" class="value">—</div></div>
+    </div>
+
+    <div id="error"></div>
+    <div class="grid">
+        <section class="card"><h2>Daily Attendance</h2><div class="chart"><canvas id="dailyChart"></canvas></div></section>
+        <section class="card"><h2>Recognition by Source</h2><div class="chart"><canvas id="sourceChart"></canvas></div></section>
+        <section class="card wide"><h2>Person Attendance</h2><div id="peopleTable"></div></section>
+        <section class="card wide"><h2>Video Analytics</h2><div id="videoTable"></div></section>
+    </div>
+</div>
+<script>
+const API='https://secure-vision-attendance.onrender.com';
+const fmt=v=>v==null?'—':v;
+function table(headers,rows){return `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
+async function load(){
+ try{
+  const r=await fetch(`${API}/analytics/dashboard`); if(!r.ok) throw new Error('Analytics API returned '+r.status); const d=await r.json();
+  const p=d.person_attendance||[], a=d.daily_attendance||[], perf=d.recognition_performance?.[0]||{}, s=d.recognition_by_source||[], v=d.video_analytics||[];
+  document.getElementById('people').textContent=p.length; document.getElementById('attendance').textContent=a.reduce((x,y)=>x+Number(y.attendance_records||0),0); document.getElementById('events').textContent=fmt(perf.total_events); document.getElementById('rate').textContent=fmt(perf.recognition_rate)+'%'; document.getElementById('status').textContent='Live';
+  new Chart(document.getElementById('dailyChart'),{type:'line',data:{labels:a.map(x=>x.attendance_date),datasets:[{label:'People Present',data:a.map(x=>x.people_present),tension:.3},{label:'Attendance Records',data:a.map(x=>x.attendance_records),tension:.3}]},options:{responsive:true,maintainAspectRatio:false}});
+  new Chart(document.getElementById('sourceChart'),{type:'bar',data:{labels:s.map(x=>x.source),datasets:[{label:'Recognition Rate %',data:s.map(x=>x.recognition_rate)}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:100}}}});
+  document.getElementById('peopleTable').innerHTML=table(['Name','Active','Attendance Days','Last Date','Last Time'],p.map(x=>[x.name,x.is_active?'Yes':'No',x.attendance_days,x.last_attendance_date,x.last_attendance_time]));
+  document.getElementById('videoTable').innerHTML=table(['File','Duration','Faces','Recognized','Unknown','Rate','Status'],v.map(x=>[x.filename,x.duration_seconds+'s',x.faces_detected,x.recognized_faces,x.unknown_faces,x.recognition_rate+'%',x.processing_status]));
+ }catch(e){document.getElementById('status').textContent='Offline';document.getElementById('status').className='status error';document.getElementById('error').innerHTML='<div class="error">Analytics could not load: '+e.message+'</div>'}
+}
+load();
+</script>
+</body>
+</html>
