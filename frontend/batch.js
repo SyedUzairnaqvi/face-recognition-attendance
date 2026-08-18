@@ -6,7 +6,7 @@ const BATCH_API_BASE =
     window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1"
         ? "http://127.0.0.1:8000"
-        : "https://secure-vision-attendance.onrender.com";
+        : "https://secure-vision-attendance-1.onrender.com";
 
 const batchInput = document.getElementById("batch-image-input");
 const batchButton = document.getElementById("batch-btn");
@@ -88,9 +88,13 @@ async function processChunk(files) {
                 body: formData,
             });
 
-            const data = await response.json();
+            const contentType = response.headers.get("content-type") || "";
+            const data = contentType.includes("application/json")
+                ? await response.json()
+                : { detail: await response.text() };
+
             if (!response.ok) {
-                throw new Error(data.detail || "Batch processing failed");
+                throw new Error(data.detail || `HTTP ${response.status}`);
             }
             return data;
         } catch (error) {
