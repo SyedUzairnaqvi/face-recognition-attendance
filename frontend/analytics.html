@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Secure Vision Analytics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f5f7fb;color:#18212f}.wrap{max-width:1200px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}h1{margin:0 0 5px}.muted{color:#667085}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,.04)}.value{font-size:30px;font-weight:700;margin-top:8px}.label{color:#667085;font-size:13px}.charts{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.chart{height:300px}.wide{margin-top:16px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid #eee}th{color:#667085}.status{padding:8px 12px;border-radius:9px;background:#eaf7ed;color:#247a36}.error{padding:12px;border-radius:9px;background:#fff0f0;color:#b42318;margin-bottom:16px}@media(max-width:800px){.grid{grid-template-columns:1fr 1fr}.charts{grid-template-columns:1fr}}@media(max-width:500px){.grid{grid-template-columns:1fr}.top{display:block}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="top"><div><h1>Secure Vision Analytics</h1><div class="muted">Live attendance and recognition analytics</div></div><span id="status" class="status">Loading...</span></div>
+<div id="error"></div>
+<div class="grid">
+<div class="card"><div class="label">Registered People</div><div id="people" class="value">—</div></div>
+<div class="card"><div class="label">Attendance Records</div><div id="attendance" class="value">—</div></div>
+<div class="card"><div class="label">Recognition Events</div><div id="events" class="value">—</div></div>
+<div class="card"><div class="label">Recognition Rate</div><div id="rate" class="value">—</div></div>
+</div>
+<div class="charts">
+<div class="card"><h2>Daily Attendance</h2><div class="chart"><canvas id="daily"></canvas></div></div>
+<div class="card"><h2>Recognition by Source</h2><div class="chart"><canvas id="source"></canvas></div></div>
+</div>
+<div class="card wide"><h2>Person Attendance</h2><div id="peopleTable"></div></div>
+<div class="card wide"><h2>Video Analytics</h2><div id="video"></div></div>
+</div>
+<script>
+const params=new URLSearchParams(location.search);
+const API=params.get('api') || (location.hostname==='localhost'||location.hostname==='127.0.0.1' ? 'http://127.0.0.1:8001' : 'https://secure-vision-attendance.onrender.com');
+const $=id=>document.getElementById(id);
+let c1,c2;
+function table(headers,rows){if(!rows.length)return '<p class="muted">No data available.</p>';return '<table><thead><tr>'+headers.map(x=>`<th>${x}</th>`).join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>`<td>${x??'—'}</td>`).join('')+'</tr>').join('')+'</tbody></table>'}
+async function load(){
+ try{
+  const r=await fetch(API+'/analytics/dashboard',{cache:'no-store'});if(!r.ok)throw new Error('Analytics API returned '+r.status);const d=await r.json();
+  $('people').textContent=d.registered_people??0;$('attendance').textContent=d.attendance_records??0;$('events').textContent=d.recognition_events??0;$('rate').textContent=(d.recognition_rate??0)+'%';
+  $('status').textContent=d.database_connected?'MySQL connected':'API online';
+  $('peopleTable').innerHTML=table(['Name','Attendance Days','Last Attendance'],(d.person_attendance||[]).map(x=>[x.name,x.attendance_count,x.last_attendance]));
+  const v=d.video_analytics||{};$('video').innerHTML=table(['Videos','Faces Detected','Recognized','Unknown'],[[v.total_videos||0,v.total_faces_detected||0,v.total_recognized_faces||0,v.total_unknown_faces||0]]);
+  if(c1)c1.destroy();if(c2)c2.destroy();
+  c1=new Chart($('daily'),{type:'line',data:{labels:(d.daily_attendance||[]).map(x=>x.date),datasets:[{label:'People Present',data:(d.daily_attendance||[]).map(x=>x.people_present)},{label:'Attendance Records',data:(d.daily_attendance||[]).map(x=>x.attendance_records)}]},options:{responsive:true,maintainAspectRatio:false}});
+  c2=new Chart($('source'),{type:'bar',data:{labels:(d.recognition_by_source||[]).map(x=>x.source),datasets:[{label:'Matched',data:(d.recognition_by_source||[]).map(x=>x.matched_events)},{label:'Unknown',data:(d.recognition_by_source||[]).map(x=>x.unknown_events)}]},options:{responsive:true,maintainAspectRatio:false}});
+ }catch(e){$('status').textContent='Offline';$('error').innerHTML='<div class="error">'+e.message+'</div>'}
+}
+load();setInterval(load,30000);
+</script>
+</body>
+</html>
