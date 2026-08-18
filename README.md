@@ -6,6 +6,8 @@ A deployable computer-vision attendance platform that combines face enrollment, 
 
 **API documentation:** https://secure-vision-attendance.onrender.com/docs
 
+**Analytics API:** https://secure-vision-attendance.onrender.com/analytics/dashboard
+
 ## What problem does it solve?
 
 Manual attendance is repetitive and difficult to audit. Basic face-recognition demos often stop at “predict a name” and do not handle image quality, repeated check-ins, persistence, enrollment, or video input.
@@ -22,7 +24,7 @@ Input + file validation
 Image quality checks / face detection
         |
         v
-Face embedding extraction (OpenFace)
+Face embedding extraction (Facenet512)
         |
         v
 Cosine-distance matching
@@ -42,11 +44,11 @@ For video attendance, the system samples frames, recognizes faces in each sample
 - Face enrollment with image-quality validation
 - Face verification through a REST API
 - Video attendance for MP4, MOV, AVI, MKV, and WEBM uploads
-- OpenFace embeddings with a cached NumPy index
-- Cosine-distance matching with a configurable threshold
+- Facenet512 embeddings with a cached NumPy index
+- Cosine-distance matching with a validated engineering threshold of `0.375`
 - Threshold-relative match score for UI feedback
 - MySQL 8 attendance persistence
-- Database-level duplicate prevention using `UNIQUE(name, date)`
+- Database-level duplicate prevention using `UNIQUE(person_id, attendance_date)`
 - Separate attendance methods: `Face Recognition` and `Video Recognition`
 - Today's attendance dashboard with name, time, status, and method
 - Health endpoint reporting embedding-index readiness
@@ -55,7 +57,20 @@ For video attendance, the system samples frames, recognizes faces in each sample
 - Temporary-file cleanup after processing
 - FastAPI Swagger/OpenAPI documentation
 - Docker configuration for local/container deployment
+- SQL analytics and Power BI integration through the HTTPS analytics API
 - Automated tests for core database, quality, and liveness components
+
+## Verified current configuration
+
+The current recognition configuration is:
+
+- **Embedding model:** `Facenet512`
+- **Cosine distance threshold:** `0.375`
+- **Liveness:** configurable; currently disabled for the verified recognition flow
+
+The real application flow has been tested end-to-end with four enrolled identities (`uzair`, `pappa`, `zohair`, `ammi`). All four were correctly recognized through `/recognition/verify`, and duplicate attendance protection returned `already_marked_today` on repeat submissions.
+
+A FacePass benchmark was also used for threshold selection. At `0.375`, the benchmark reported 79.22% genuine acceptance, 3.82% false acceptance, 96.18% unknown rejection, and 87.70% balanced accuracy. These are benchmark results, not a universal production accuracy guarantee.
 
 ## API endpoints
 
@@ -63,19 +78,21 @@ For video attendance, the system samples frames, recognizes faces in each sample
 |---|---|---|
 | GET | `/health` | Service and embedding-index health |
 | POST | `/recognition/verify` | Verify faces in an image and mark attendance |
+| POST | `/recognition/batch-verify` | Verify multiple images |
 | POST | `/recognition/video` | Process a video and mark recognized people |
 | GET | `/attendance` | Retrieve attendance records |
 | GET | `/attendance/today` | Retrieve today's attendance |
 | POST | `/enrollment/register` | Register a person's face image |
 | POST | `/enrollment/build-index` | Start embedding-index rebuild |
 | GET | `/enrollment/build-index/status` | Check index-build status |
+| GET | `/analytics/dashboard` | Return MySQL-backed analytics for BI/dashboard use |
 | GET | `/docs` | Interactive Swagger UI |
 
 ## Recognition logic
 
-The application extracts an embedding for each detected face and compares it with the registered embedding index using cosine distance. A face is accepted when its distance is at or below `EMBEDDING_DISTANCE_THRESHOLD` (default `0.30`).
+The application extracts an embedding for each detected face and compares it with the registered embedding index using cosine distance. A face is accepted when its distance is at or below `EMBEDDING_DISTANCE_THRESHOLD`.
 
-The displayed match score is **threshold-relative UI feedback, not a calibrated probability or accuracy percentage**. The threshold should be validated against a representative verification dataset before any high-stakes deployment.
+The displayed match score is **threshold-relative UI feedback, not a calibrated probability or accuracy percentage**. The operating threshold was selected using the project's FacePass benchmark and should be revalidated for any materially different deployment population or environment.
 
 ## Video processing
 
@@ -86,6 +103,26 @@ Video uploads are constrained by environment-configurable limits:
 - Sampling rate: 1 frame/second by default
 
 Only unique recognized people are added to the video result, and the database prevents another attendance record for the same person on the same date.
+
+The MySQL `video_sessions` table is populated by video processing. Local verification confirmed completed sessions with sampled frames, detected faces, recognized faces, unknown faces, and processing status.
+
+## Analytics and Power BI
+
+The project exposes a production analytics endpoint backed by MySQL:
+
+```text
+https://secure-vision-attendance.onrender.com/analytics/dashboard
+```
+
+It provides KPI totals, daily attendance, recognition source/result breakdowns, person attendance, and video analytics.
+
+The repository also contains:
+
+- `docs/analytics.sql` — direct MySQL analytics queries
+- `docs/POWER_BI_SETUP.md` — Power BI Web/HTTPS connector setup
+- `Secure_Vision_Attendance_Analytics.pbix` — Power BI report artifact
+
+The recommended BI architecture keeps MySQL credentials server-side and lets Power BI consume the HTTPS analytics API.
 
 ## Project structure
 
@@ -105,7 +142,7 @@ secure-vision-attendance/
 ├── docker/                  # Docker configuration
 ├── scripts/                 # Index building, migration, benchmark helpers
 ├── tests/                   # Automated tests
-├── docs/                    # Architecture and security documentation
+├── docs/                    # Architecture, analytics, and security documentation
 ├── Procfile                 # Render/Heroku-style process definition
 └── requirements.txt
 ```
@@ -186,13 +223,12 @@ Important settings include:
 - `MAX_VIDEO_UPLOAD_BYTES`
 - `MAX_VIDEO_SECONDS`
 - `VIDEO_SAMPLE_FPS`
+- `EMBEDDING_MODEL_NAME`
 - `EMBEDDING_DISTANCE_THRESHOLD`
 - `QUALITY_BLUR_THRESHOLD`
 - `MIN_BRIGHTNESS`
 - `MAX_BRIGHTNESS`
 - `LIVENESS_ENABLED`
-
-The production configuration currently uses the lighter `OpenFace` embedding model to keep memory usage practical on a low-resource deployment.
 
 ## Testing
 
@@ -212,23 +248,43 @@ Before a real deployment, add appropriate authentication/authorization, HTTPS-on
 
 The liveness service is present as a configurable component; `LIVENESS_ENABLED` should only be enabled after validating its behavior and resource requirements for the target deployment.
 
+## Current verification snapshot
+
+The local MySQL-backed application has been verified with:
+
+- 4/4 real enrolled identities correctly recognized through `/recognition/verify`
+- Duplicate attendance protection confirmed
+- Recognition events persisted to MySQL
+- Video sessions persisted and completed successfully
+- Facenet512 threshold `0.375` active in the current configuration
+
+Example local database snapshot during verification:
+
+- 40 persons
+- 43 attendance rows
+- 40 people with attendance on the verification date
+- 766 recognition events
+- 3 completed video sessions
+
+These figures are test-environment data and should not be treated as production capacity or accuracy claims.
+
 ## Limitations
 
-- The default similarity threshold is an engineering setting, not a scientifically validated operating point.
 - A match score is not a probability of identity.
 - Video recognition is frame-sampling based rather than continuous tracking.
-- The application currently uses MySQL 8 with connection pooling and relational constraints; production deployment should use a managed and properly secured MySQL instance.
-- The current public demo should use synthetic/test enrollment data rather than sensitive real-world biometric data.
+- Liveness is currently disabled in the verified flow and must be validated before claiming presentation-attack resistance.
+- The public demo should use synthetic/test enrollment data rather than sensitive real-world biometric data.
+- Production use requires appropriate authentication, privacy controls, secure biometric storage, and operational monitoring.
 
 ## Next production upgrades
 
-1. Authentication and role-based access control
-2. Managed MySQL deployment and database hardening
-3. Encrypted biometric storage and key management
-4. Calibrated FAR/FRR evaluation and threshold selection
-5. Stronger presentation-attack evaluation
-6. Structured audit logs and monitoring
-7. Background job processing for long videos
+1. Validate and enable an appropriate liveness/presentation-attack control
+2. Add authentication and role-based access control
+3. Harden managed MySQL deployment and backups
+4. Add encrypted biometric storage and key management
+5. Expand FAR/FRR and demographic/environment validation
+6. Add structured audit logs and monitoring
+7. Add background job processing for long videos
 
 ## License
 
