@@ -1,21 +1,23 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Iterable
 
 import cv2
 import numpy as np
 
-from app.core.config import EMBEDDING_DISTANCE_THRESHOLD, EMBEDDING_MODEL_NAME, EMBEDDING_INDEX_PATH
+from app.core.config import (
+    EMBEDDING_DISTANCE_THRESHOLD,
+    EMBEDDING_MODEL_NAME,
+    EMBEDDING_INDEX_PATH,
+    LIVENESS_ENABLED,
+)
 from app.db.database import get_connection
 from app.models.embedding_engine import _detect_faces, _embedding_from_face, load_embedding_index
 
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# Cache the embedding matrix in memory. This avoids reading the .npz index
-# from disk for every uploaded image while still detecting index rebuilds.
 _INDEX_CACHE: dict | None = None
 _INDEX_MTIME_NS: int | None = None
 
@@ -30,7 +32,6 @@ def _get_cached_index() -> dict:
     if _INDEX_CACHE is None or _INDEX_MTIME_NS != mtime_ns:
         index = load_embedding_index()
         matrix = np.asarray(index["embeddings"], dtype=np.float32)
-        # Stored embeddings are already normalized, but normalize defensively.
         norms = np.linalg.norm(matrix, axis=1, keepdims=True)
         matrix = matrix / np.maximum(norms, 1e-12)
         _INDEX_CACHE = {
@@ -43,10 +44,10 @@ def _get_cached_index() -> dict:
 
 
 def recognize_image_bytes(data: bytes) -> list[dict]:
-    """Fast in-memory recognition for one image.
+    """Fast in-memory recognition with cached/vectorized matching.
 
-    The known-face matrix is cached and cosine comparisons are vectorized,
-    avoiding a Python loop over every enrolled face.
+    Liveness is never bypassed. If it is enabled, batch image recognition
+    returns a non-match instead of weakening the security model.
     """
     image_array = np.frombuffer(data, dtype=np.uint8)
     image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
@@ -59,6 +60,21 @@ def recognize_image_bytes(data: bytes) -> list[dict]:
 
     for face_obj in face_objects:
         facial_area = face_obj.get("facial_area", {})
+
+        if LIVENESS_ENABLED:
+            results.append({
+                "name": "Unknown",
+                "matched": False,
+                "distance": None,
+                "threshold": EMBEDDING_DISTANCE_THRESHOLD,
+                "match_score": 0,
+                "engine": "embedding_cosine_vectorized",
+                "model": EMBEDDING_MODEL_NAME,
+                "face_box": facial_area,
+                "reason": "liveness_requires_interactive_verification",
+            })
+            continue
+
         query = _embedding_from_face(face_obj["face"])
         if query is None:
             results.append({
@@ -74,7 +90,6 @@ def recognize_image_bytes(data: bytes) -> list[dict]:
             })
             continue
 
-        # query and index rows are unit-normalized, so cosine distance is 1-dot.
         distances = 1.0 - np.dot(index["embeddings"], query)
         best_idx = int(np.argmin(distances))
         distance = float(distances[best_idx])
@@ -100,7 +115,7 @@ def recognize_image_bytes(data: bytes) -> list[dict]:
 
 
 def bulk_store_results(results: Iterable[dict], source: str = "Batch Image Recognition") -> dict:
-    """Persist a batch using one MySQL transaction and bulk event inserts."""
+    """Persist a batch with one MySQL transaction and bulk inserts."""
     rows = list(results)
     now = datetime.now(IST)
     today = now.strftime("%Y-%m-%d")
