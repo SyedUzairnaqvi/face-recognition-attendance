@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.db.database import get_connection
 
@@ -10,11 +10,11 @@ router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 @router.get("/dashboard")
 def dashboard():
-    """Return dashboard analytics when MySQL is available.
+    """Return live analytics from the configured MySQL database.
 
-    The endpoint is deliberately fail-safe: if the remote deployment has no
-    database connection, it returns an empty dashboard instead of crashing the
-    API. This keeps the experiment branch safe for Render testing.
+    The endpoint fails explicitly when MySQL is unavailable. Returning
+    fabricated zero-valued analytics would make a dashboard look healthy
+    while hiding a database/configuration failure.
     """
 
     today = date.today().isoformat()
@@ -23,15 +23,35 @@ def dashboard():
         with get_connection() as conn:
             cursor = conn.cursor(dictionary=True)
 
-            cursor.execute("SELECT COUNT(*) AS total FROM persons WHERE is_active = 1")
-            registered_people = int(cursor.fetchone()["total"])
+            # --------------------------------------------------------
+            # KPI: active registered people
+            # --------------------------------------------------------
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM persons
+                WHERE is_active = 1
+                """
+            )
+            registered_people = int(cursor.fetchone()["total"] or 0)
 
+            # --------------------------------------------------------
+            # KPI: total attendance records
+            # --------------------------------------------------------
             cursor.execute("SELECT COUNT(*) AS total FROM attendance")
-            attendance_records = int(cursor.fetchone()["total"])
+            attendance_records = int(cursor.fetchone()["total"] or 0)
 
-            cursor.execute("SELECT COUNT(*) AS total FROM recognition_events")
-            recognition_events = int(cursor.fetchone()["total"])
+            # --------------------------------------------------------
+            # KPI: total recognition events
+            # --------------------------------------------------------
+            cursor.execute(
+                "SELECT COUNT(*) AS total FROM recognition_events"
+            )
+            recognition_events = int(cursor.fetchone()["total"] or 0)
 
+            # --------------------------------------------------------
+            # KPI: recognition match rate
+            # --------------------------------------------------------
             cursor.execute(
                 """
                 SELECT
@@ -50,6 +70,9 @@ def dashboard():
                 else 0.0
             )
 
+            # --------------------------------------------------------
+            # Chart: daily attendance
+            # --------------------------------------------------------
             cursor.execute(
                 """
                 SELECT
@@ -63,13 +86,18 @@ def dashboard():
             )
             daily_attendance = cursor.fetchall()
 
+            # --------------------------------------------------------
+            # Chart: recognition by source
+            # --------------------------------------------------------
             cursor.execute(
                 """
                 SELECT
                     source,
                     COUNT(*) AS total_events,
-                    SUM(CASE WHEN result = 'matched' THEN 1 ELSE 0 END) AS matched_events,
-                    SUM(CASE WHEN result = 'unknown' THEN 1 ELSE 0 END) AS unknown_events
+                    SUM(CASE WHEN result = 'matched' THEN 1 ELSE 0 END)
+                        AS matched_events,
+                    SUM(CASE WHEN result = 'unknown' THEN 1 ELSE 0 END)
+                        AS unknown_events
                 FROM recognition_events
                 GROUP BY source
                 ORDER BY total_events DESC
@@ -77,6 +105,9 @@ def dashboard():
             )
             recognition_by_source = cursor.fetchall()
 
+            # --------------------------------------------------------
+            # Table: attendance by person
+            # --------------------------------------------------------
             cursor.execute(
                 """
                 SELECT
@@ -84,7 +115,8 @@ def dashboard():
                     COUNT(a.attendance_id) AS attendance_count,
                     MAX(a.attendance_date) AS last_attendance
                 FROM persons p
-                LEFT JOIN attendance a ON a.person_id = p.person_id
+                LEFT JOIN attendance a
+                    ON a.person_id = p.person_id
                 WHERE p.is_active = 1
                 GROUP BY p.person_id, p.name
                 ORDER BY attendance_count DESC, p.name
@@ -92,6 +124,9 @@ def dashboard():
             )
             person_attendance = cursor.fetchall()
 
+            # --------------------------------------------------------
+            # Video KPI summary
+            # --------------------------------------------------------
             cursor.execute(
                 """
                 SELECT
@@ -123,28 +158,13 @@ def dashboard():
         }
 
     except Exception as exc:
+        # Do not expose database credentials, connection strings, or secrets.
         print(
             "Analytics database unavailable: "
             f"{type(exc).__name__}: {exc}"
         )
 
-        return {
-            "status": "ok",
-            "source": "fallback",
-            "database_connected": False,
-            "message": "Analytics API is online, but the database is unavailable on this deployment.",
-            "date": today,
-            "registered_people": 0,
-            "attendance_records": 0,
-            "recognition_events": 0,
-            "recognition_rate": 0.0,
-            "daily_attendance": [],
-            "recognition_by_source": [],
-            "person_attendance": [],
-            "video_analytics": {
-                "total_videos": 0,
-                "total_faces_detected": 0,
-                "total_recognized_faces": 0,
-                "total_unknown_faces": 0,
-            },
-        }
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics database is unavailable.",
+        ) from exc
