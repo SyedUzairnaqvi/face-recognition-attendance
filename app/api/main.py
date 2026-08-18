@@ -15,6 +15,8 @@ from app.api.routes import (
     video,
 )
 
+from app.api.routes.analytics_public import router as analytics_public_router
+
 from app.core.config import (
     KNOWN_FACES_DIR,
     EMBEDDING_INDEX_PATH,
@@ -152,6 +154,12 @@ app.include_router(
 # Video attendance
 app.include_router(
     video.router
+)
+
+# Public analytics endpoint for the zero-cost deployment.
+# This route does not touch the local MySQL database.
+app.include_router(
+    analytics_public_router
 )
 
 
