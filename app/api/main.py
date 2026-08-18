@@ -9,6 +9,7 @@ from app.db.database import init_db
 
 from app.api.routes import (
     recognition,
+    recognition_batch,
     attendance,
     health,
     enrollment,
@@ -34,8 +35,6 @@ from app.models.embedding_engine import build_embedding_index
 
 ensure_seed_faces(KNOWN_FACES_DIR)
 
-# The experiment branch must remain bootable when Render has no
-# remote MySQL. The production/local main branch is unchanged.
 try:
     init_db()
 except Exception as exc:
@@ -111,10 +110,10 @@ if not _index_is_compatible():
 
 app = FastAPI(
     title="Secure Vision Attendance API",
-    version="2.1.0",
+    version="2.2.0",
     description=(
-        "Computer-vision identity verification, video attendance, "
-        "quality checks, and duplicate-safe attendance API."
+        "Computer-vision identity verification, high-volume batch recognition, "
+        "video attendance, quality checks, and duplicate-safe attendance API."
     ),
 )
 
@@ -138,11 +137,10 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(recognition.router)
+app.include_router(recognition_batch.router)
 app.include_router(attendance.router)
 app.include_router(enrollment.router)
 app.include_router(video.router)
-
-# Safe public analytics endpoint. It does not touch MySQL.
 app.include_router(analytics_public_router)
 
 
@@ -156,4 +154,5 @@ def home():
     return {
         "message": "Secure Vision Attendance API is running",
         "docs": "/docs",
+        "batch_recognition": "/recognition/batch-verify",
     }
