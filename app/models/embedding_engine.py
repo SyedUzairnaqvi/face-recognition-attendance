@@ -61,6 +61,52 @@ def _embedding_from_face(face: np.ndarray) -> np.ndarray | None:
     return embedding
 
 
+def _check_liveness(face: np.ndarray) -> dict:
+    """Run DeepFace anti-spoofing and normalize the result.
+
+    Liveness is fail-closed: when enabled, an unavailable anti-spoofing
+    result must never be allowed to create attendance.
+    """
+    if not LIVENESS_ENABLED:
+        return assess_liveness({})
+
+    try:
+        faces = DeepFace.extract_faces(
+            img_path=face,
+            detector_backend="opencv",
+            enforce_detection=False,
+            align=True,
+            anti_spoofing=True,
+        )
+    except Exception as exc:
+        print(f"Liveness check failed: {type(exc).__name__}: {exc}")
+        return {
+            "enabled": True,
+            "is_real": False,
+            "score": None,
+            "status": "unavailable",
+        }
+
+    if not faces:
+        return {
+            "enabled": True,
+            "is_real": False,
+            "score": None,
+            "status": "unavailable",
+        }
+
+    # The cropped face is already selected by our detector. If DeepFace
+    # returns multiple results, use the largest detected face.
+    face_obj = max(
+        faces,
+        key=lambda item: (
+            item.get("facial_area", {}).get("w", 0)
+            * item.get("facial_area", {}).get("h", 0)
+        ),
+    )
+    return assess_liveness(face_obj)
+
+
 def build_embedding_index(known_faces_dir: Path) -> dict:
     embeddings: List[np.ndarray] = []
     names: List[str] = []
@@ -168,39 +214,64 @@ def recognize_with_embeddings(img_path: str) -> List[dict]:
 
     for face_obj in face_objects:
         facial_area = face_obj.get("facial_area", {})
-        liveness = assess_liveness({})
-        if LIVENESS_ENABLED:
+        face = face_obj["face"]
+
+        # ------------------------------------------------------------
+        # LIVENESS GATE
+        # ------------------------------------------------------------
+        # Run anti-spoofing before identity matching. A spoof or an
+        # unavailable liveness model is always rejected when enabled.
+        liveness = _check_liveness(face)
+        if LIVENESS_ENABLED and liveness.get("is_real") is not True:
             results.append({
-                "name": "Unknown", "matched": False, "distance": None,
-                "threshold": EMBEDDING_DISTANCE_THRESHOLD, "match_score": 0,
-                "engine": "embedding_cosine", "model": EMBEDDING_MODEL_NAME,
-                "liveness": liveness, "face_box": facial_area,
-                "reason": "liveness_requires_heavier_detector",
+                "name": "Unknown",
+                "matched": False,
+                "distance": None,
+                "threshold": EMBEDDING_DISTANCE_THRESHOLD,
+                "match_score": 0,
+                "engine": "embedding_cosine",
+                "model": EMBEDDING_MODEL_NAME,
+                "liveness": liveness,
+                "face_box": facial_area,
+                "reason": "liveness_failed",
             })
             continue
 
         try:
-            query = _embedding_from_face(face_obj["face"])
+            query = _embedding_from_face(face)
         except Exception as exc:
             print(f"Embedding failed: {exc}")
             query = None
 
         if query is None:
             results.append({
-                "name": "Unknown", "matched": False, "distance": None,
-                "threshold": EMBEDDING_DISTANCE_THRESHOLD, "match_score": 0,
-                "engine": "embedding_cosine", "model": EMBEDDING_MODEL_NAME,
-                "liveness": liveness, "face_box": facial_area,
+                "name": "Unknown",
+                "matched": False,
+                "distance": None,
+                "threshold": EMBEDDING_DISTANCE_THRESHOLD,
+                "match_score": 0,
+                "engine": "embedding_cosine",
+                "model": EMBEDDING_MODEL_NAME,
+                "liveness": liveness,
+                "face_box": facial_area,
                 "reason": "embedding_failed",
             })
             continue
 
-        distances = np.array([_cosine_distance(query, row) for row in index["embeddings"]])
+        distances = np.array(
+            [_cosine_distance(query, row) for row in index["embeddings"]]
+        )
         best_idx = int(np.argmin(distances))
         distance = float(distances[best_idx])
         matched = distance <= EMBEDDING_DISTANCE_THRESHOLD
         name = str(index["names"][best_idx]) if matched else "Unknown"
-        score = max(0.0, min(100.0, (1.0 - distance / EMBEDDING_DISTANCE_THRESHOLD) * 100.0))
+        score = max(
+            0.0,
+            min(
+                100.0,
+                (1.0 - distance / EMBEDDING_DISTANCE_THRESHOLD) * 100.0,
+            ),
+        )
 
         results.append({
             "name": name,
