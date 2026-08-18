@@ -6,13 +6,20 @@
     <title>Secure Vision Analytics</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        *{box-sizing:border-box} body{margin:0;font-family:Inter,Arial,sans-serif;background:#f5f7fb;color:#18212f}
-        .wrap{max-width:1250px;margin:0 auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}
-        h1{margin:0 0 6px;font-size:30px}.sub{margin:0;color:#667085}.btn{border:0;border-radius:10px;padding:11px 16px;background:#18212f;color:white;text-decoration:none;cursor:pointer}
-        .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px}.card{background:white;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-shadow:0 3px 12px rgba(0,0,0,.04)}
-        .label{font-size:13px;color:#667085}.value{font-size:30px;font-weight:700;margin-top:8px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.wide{grid-column:1/-1}.chart{height:300px}
+        *{box-sizing:border-box}
+        body{margin:0;font-family:Inter,Arial,sans-serif;background:#f5f7fb;color:#18212f}
+        .wrap{max-width:1250px;margin:0 auto;padding:28px}
+        .top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}
+        h1{margin:0 0 6px;font-size:30px}.sub{margin:0;color:#667085}
+        .btn{border:0;border-radius:10px;padding:11px 16px;background:#18212f;color:white;text-decoration:none;cursor:pointer}
+        .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px}
+        .card{background:white;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-shadow:0 3px 12px rgba(0,0,0,.04)}
+        .label{font-size:13px;color:#667085}.value{font-size:30px;font-weight:700;margin-top:8px}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.wide{grid-column:1/-1}.chart{height:300px}
         table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #eee;font-size:14px}th{color:#667085;font-weight:600}
-        .status{padding:10px 14px;border-radius:10px;background:#eef7ee;color:#287a35}.error{background:#fff0f0;color:#b42318;padding:14px;border-radius:10px}
+        .status{padding:10px 14px;border-radius:10px;background:#eef7ee;color:#287a35}
+        .error{background:#fff0f0;color:#b42318;padding:14px;border-radius:10px;margin-bottom:18px}
+        .note{font-size:13px;color:#667085;margin-top:8px}
         @media(max-width:800px){.kpis{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.wide{grid-column:auto}}
     </style>
 </head>
@@ -24,35 +31,187 @@
     </div>
 
     <div class="kpis">
-        <div class="card"><div class="label">Registered People</div><div id="people" class="value">—</div></div>
+        <div class="card"><div class="label">People Seen</div><div id="people" class="value">—</div></div>
         <div class="card"><div class="label">Attendance Records</div><div id="attendance" class="value">—</div></div>
-        <div class="card"><div class="label">Recognition Events</div><div id="events" class="value">—</div></div>
+        <div class="card"><div class="label">Successful Recognitions</div><div id="events" class="value">—</div></div>
         <div class="card"><div class="label">Recognition Rate</div><div id="rate" class="value">—</div></div>
     </div>
 
     <div id="error"></div>
     <div class="grid">
         <section class="card"><h2>Daily Attendance</h2><div class="chart"><canvas id="dailyChart"></canvas></div></section>
-        <section class="card"><h2>Recognition by Source</h2><div class="chart"><canvas id="sourceChart"></canvas></div></section>
+        <section class="card"><h2>Recognition by Source</h2><div class="chart"><canvas id="sourceChart"></canvas></div><div id="sourceNote" class="note"></div></section>
         <section class="card wide"><h2>Person Attendance</h2><div id="peopleTable"></div></section>
         <section class="card wide"><h2>Video Analytics</h2><div id="videoTable"></div></section>
     </div>
 </div>
 <script>
-const API='https://secure-vision-attendance.onrender.com';
-const fmt=v=>v==null?'—':v;
-function table(headers,rows){return `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
-async function load(){
- try{
-  const r=await fetch(`${API}/analytics/dashboard`); if(!r.ok) throw new Error('Analytics API returned '+r.status); const d=await r.json();
-  const p=d.person_attendance||[], a=d.daily_attendance||[], perf=d.recognition_performance?.[0]||{}, s=d.recognition_by_source||[], v=d.video_analytics||[];
-  document.getElementById('people').textContent=p.length; document.getElementById('attendance').textContent=a.reduce((x,y)=>x+Number(y.attendance_records||0),0); document.getElementById('events').textContent=fmt(perf.total_events); document.getElementById('rate').textContent=fmt(perf.recognition_rate)+'%'; document.getElementById('status').textContent='Live';
-  new Chart(document.getElementById('dailyChart'),{type:'line',data:{labels:a.map(x=>x.attendance_date),datasets:[{label:'People Present',data:a.map(x=>x.people_present),tension:.3},{label:'Attendance Records',data:a.map(x=>x.attendance_records),tension:.3}]},options:{responsive:true,maintainAspectRatio:false}});
-  new Chart(document.getElementById('sourceChart'),{type:'bar',data:{labels:s.map(x=>x.source),datasets:[{label:'Recognition Rate %',data:s.map(x=>x.recognition_rate)}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:100}}}});
-  document.getElementById('peopleTable').innerHTML=table(['Name','Active','Attendance Days','Last Date','Last Time'],p.map(x=>[x.name,x.is_active?'Yes':'No',x.attendance_days,x.last_attendance_date,x.last_attendance_time]));
-  document.getElementById('videoTable').innerHTML=table(['File','Duration','Faces','Recognized','Unknown','Rate','Status'],v.map(x=>[x.filename,x.duration_seconds+'s',x.faces_detected,x.recognized_faces,x.unknown_faces,x.recognition_rate+'%',x.processing_status]));
- }catch(e){document.getElementById('status').textContent='Offline';document.getElementById('status').className='status error';document.getElementById('error').innerHTML='<div class="error">Analytics could not load: '+e.message+'</div>'}
+const API = 'https://secure-vision-attendance.onrender.com';
+let dailyChart = null;
+let sourceChart = null;
+
+const fmt = value => value == null || value === '' ? '—' : value;
+
+function table(headers, rows) {
+    if (!rows.length) return '<p class="note">No records available.</p>';
+    return `<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row =>
+        `<tr>${row.map(value => `<td>${fmt(value)}</td>`).join('')}</tr>`
+    ).join('')}</tbody></table>`;
 }
+
+function destroyCharts() {
+    if (dailyChart) dailyChart.destroy();
+    if (sourceChart) sourceChart.destroy();
+}
+
+function renderCharts(daily, source) {
+    destroyCharts();
+
+    dailyChart = new Chart(document.getElementById('dailyChart'), {
+        type: 'line',
+        data: {
+            labels: daily.map(x => x.attendance_date || x.date),
+            datasets: [
+                {label: 'People Present', data: daily.map(x => Number(x.people_present || 0)), tension: .3},
+                {label: 'Attendance Records', data: daily.map(x => Number(x.attendance_records || x.count || 0)), tension: .3}
+            ]
+        },
+        options: {responsive:true, maintainAspectRatio:false}
+    });
+
+    sourceChart = new Chart(document.getElementById('sourceChart'), {
+        type: 'bar',
+        data: {
+            labels: source.map(x => x.source || x.method || 'Unknown'),
+            datasets: [{label: 'Successful Recognitions', data: source.map(x => Number(x.matched_events || x.count || 0))}]
+        },
+        options: {responsive:true, maintainAspectRatio:false, scales:{y:{beginAtZero:true}}}
+    });
+}
+
+function showError(message) {
+    document.getElementById('error').innerHTML = `<div class="error">${message}</div>`;
+}
+
+async function getJson(path) {
+    const response = await fetch(`${API}${path}`, {cache:'no-store'});
+    if (!response.ok) throw new Error(`${path} returned ${response.status}`);
+    return response.json();
+}
+
+async function loadFullAnalytics() {
+    return getJson('/analytics/dashboard');
+}
+
+async function loadFallbackAnalytics() {
+    const data = await getJson('/attendance');
+    const records = Array.isArray(data.records) ? data.records : [];
+
+    const peopleMap = new Map();
+    const dailyMap = new Map();
+    const sourceMap = new Map();
+
+    for (const record of records) {
+        const name = record.name || 'Unknown';
+        const date = record.date || 'Unknown';
+        const method = record.method || 'Face Recognition';
+
+        if (!peopleMap.has(name)) peopleMap.set(name, []);
+        peopleMap.get(name).push(record);
+
+        if (!dailyMap.has(date)) dailyMap.set(date, 0);
+        dailyMap.set(date, dailyMap.get(date) + 1);
+
+        if (!sourceMap.has(method)) sourceMap.set(method, 0);
+        sourceMap.set(method, sourceMap.get(method) + 1);
+    }
+
+    const daily = [...dailyMap.entries()].sort((a,b) => a[0].localeCompare(b[0])).map(([date,count]) => ({
+        attendance_date: date,
+        people_present: new Set(records.filter(r => (r.date || 'Unknown') === date).map(r => r.name || 'Unknown')).size,
+        attendance_records: count
+    }));
+
+    const people = [...peopleMap.entries()].map(([name, rows]) => {
+        rows.sort((a,b) => `${b.date || ''} ${b.time || ''}`.localeCompare(`${a.date || ''} ${a.time || ''}`));
+        return {
+            name,
+            is_active: true,
+            attendance_days: new Set(rows.map(r => r.date)).size,
+            last_attendance_date: rows[0]?.date,
+            last_attendance_time: rows[0]?.time
+        };
+    }).sort((a,b) => Number(b.attendance_days) - Number(a.attendance_days));
+
+    const source = [...sourceMap.entries()].map(([method,count]) => ({method,count}));
+
+    return {
+        daily_attendance: daily,
+        person_attendance: people,
+        recognition_performance: [{
+            total_events: records.length,
+            matched_events: records.length,
+            unknown_events: 0,
+            recognition_rate: records.length ? 100 : 0
+        }],
+        recognition_by_source: source,
+        video_analytics: []
+    };
+}
+
+function renderDashboard(data, fallbackMode) {
+    const people = data.person_attendance || [];
+    const daily = data.daily_attendance || [];
+    const performance = data.recognition_performance?.[0] || {};
+    const source = data.recognition_by_source || [];
+    const videos = data.video_analytics || [];
+
+    document.getElementById('people').textContent = people.length;
+    document.getElementById('attendance').textContent = daily.reduce((sum,row) => sum + Number(row.attendance_records || 0), 0);
+    document.getElementById('events').textContent = fmt(performance.matched_events ?? performance.total_events);
+    document.getElementById('rate').textContent = performance.recognition_rate == null ? '—' : `${performance.recognition_rate}%`;
+
+    renderCharts(daily, source);
+
+    document.getElementById('peopleTable').innerHTML = table(
+        ['Name','Active','Attendance Days','Last Date','Last Time'],
+        people.map(x => [x.name, x.is_active ? 'Yes' : 'No', x.attendance_days, x.last_attendance_date, x.last_attendance_time])
+    );
+
+    document.getElementById('videoTable').innerHTML = videos.length
+        ? table(['File','Duration','Faces','Recognized','Unknown','Rate','Status'], videos.map(x => [
+            x.filename, x.duration_seconds == null ? '—' : `${x.duration_seconds}s`, x.faces_detected,
+            x.recognized_faces, x.unknown_faces, x.recognition_rate == null ? '—' : `${x.recognition_rate}%`, x.processing_status
+        ]))
+        : '<p class="note">Video analytics are available when the backend analytics endpoint is connected.</p>';
+
+    if (fallbackMode) {
+        document.getElementById('status').textContent = 'Live — Attendance mode';
+        document.getElementById('sourceNote').textContent = 'Using the live attendance API because the optional analytics endpoint is not available on the current backend deployment.';
+        showError('Dashboard is live. Advanced recognition/video analytics are not exposed by the current backend deployment yet.');
+    } else {
+        document.getElementById('status').textContent = 'Live';
+        document.getElementById('sourceNote').textContent = '';
+        document.getElementById('error').innerHTML = '';
+    }
+}
+
+async function load() {
+    try {
+        try {
+            const full = await loadFullAnalytics();
+            renderDashboard(full, false);
+        } catch (analyticsError) {
+            const fallback = await loadFallbackAnalytics();
+            renderDashboard(fallback, true);
+        }
+    } catch (error) {
+        document.getElementById('status').textContent = 'Offline';
+        document.getElementById('status').className = 'status error';
+        showError(`Analytics could not load: ${error.message}`);
+    }
+}
+
 load();
 </script>
 </body>
