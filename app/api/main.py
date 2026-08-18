@@ -15,6 +15,8 @@ from app.api.routes import (
     video,
 )
 
+from app.api.routes.analytics_public import router as analytics_public_router
+
 from app.core.config import (
     KNOWN_FACES_DIR,
     EMBEDDING_INDEX_PATH,
@@ -27,12 +29,20 @@ from app.models.embedding_engine import build_embedding_index
 
 
 # ============================================================
-# STARTUP
+# DATABASE STARTUP
 # ============================================================
 
 ensure_seed_faces(KNOWN_FACES_DIR)
 
-init_db()
+# The experiment branch must remain bootable when Render has no
+# remote MySQL. The production/local main branch is unchanged.
+try:
+    init_db()
+except Exception as exc:
+    print(
+        "Database startup check skipped on analytics experiment: "
+        f"{type(exc).__name__}: {exc}"
+    )
 
 
 # ============================================================
@@ -52,9 +62,7 @@ def _index_is_compatible():
         ) as data:
 
             model = str(data["model"][0])
-
             embeddings = data["embeddings"]
-
             names = data["names"]
 
             return (
@@ -65,7 +73,6 @@ def _index_is_compatible():
             )
 
     except Exception:
-
         return False
 
 
@@ -77,18 +84,14 @@ def _auto_build_index():
 
     try:
 
-        result = build_embedding_index(
-            KNOWN_FACES_DIR
-        )
+        result = build_embedding_index(KNOWN_FACES_DIR)
 
-        print(
-            f"Automatic embedding index build completed: {result}"
-        )
+        print(f"Automatic embedding index build completed: {result}")
 
     except Exception as exc:
 
         print(
-            f"Automatic embedding index build failed: "
+            "Automatic embedding index build failed: "
             f"{type(exc).__name__}: {exc}"
         )
 
@@ -133,26 +136,14 @@ app.add_middleware(
 # ROUTES
 # ============================================================
 
-app.include_router(
-    health.router
-)
+app.include_router(health.router)
+app.include_router(recognition.router)
+app.include_router(attendance.router)
+app.include_router(enrollment.router)
+app.include_router(video.router)
 
-app.include_router(
-    recognition.router
-)
-
-app.include_router(
-    attendance.router
-)
-
-app.include_router(
-    enrollment.router
-)
-
-# Video attendance
-app.include_router(
-    video.router
-)
+# Safe public analytics endpoint. It does not touch MySQL.
+app.include_router(analytics_public_router)
 
 
 # ============================================================
