@@ -12,7 +12,7 @@
         <div>
             <p class="eyebrow">SECURE VISION</p>
             <h1>Attendance Console</h1>
-            <p class="subtitle">Face verification, video attendance, quality checks, and duplicate-safe attendance.</p>
+            <p class="subtitle">Face verification, batch recognition, video attendance, quality checks, and duplicate-safe attendance.</p>
         </div>
         <div id="api-status" class="status-pill">Checking API...</div>
     </header>
@@ -50,6 +50,25 @@
             </label>
             <button id="register-btn" class="primary-btn" disabled>Register Face</button>
             <div id="register-result" class="result hidden"></div>
+        </section>
+
+        <section class="card" style="grid-column:1/-1">
+            <div class="card-header">
+                <div>
+                    <h2>⚡ High-Volume Batch Recognition</h2>
+                    <p>Choose many images or an entire folder. The browser automatically sends safe 25-image chunks.</p>
+                </div>
+                <strong>Up to 50,000 images</strong>
+            </div>
+            <label class="dropzone" for="batch-image-input">
+                <input id="batch-image-input" type="file" accept="image/*" multiple webkitdirectory directory>
+                <span class="drop-title">Choose images or an entire folder</span>
+                <span id="batch-file-name" class="drop-subtitle">PNG, JPG, JPEG, WEBP</span>
+            </label>
+            <button id="batch-btn" class="primary-btn" disabled>Process Images & Mark Attendance</button>
+            <progress id="batch-progress" value="0" max="100" style="width:100%;height:18px;margin-top:14px"></progress>
+            <div id="batch-progress-text" class="drop-subtitle" style="margin-top:6px">0 / 0 images • 0%</div>
+            <div id="batch-result" class="result hidden"></div>
         </section>
 
         <section class="card">
@@ -92,5 +111,6 @@
 
 <script src="app.js"></script>
 <script src="video.js"></script>
+<script src="batch.js"></script>
 </body>
 </html>
