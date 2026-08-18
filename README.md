@@ -1,6 +1,6 @@
 # Secure Vision Attendance
 
-A deployable computer-vision attendance platform that combines face enrollment, image verification, video-based attendance, quality checks, embedding-based matching, and duplicate-safe attendance records behind a FastAPI API and lightweight web dashboard.
+A production-oriented computer-vision attendance platform that combines face enrollment, image verification, video processing, image-quality checks, Facenet512 embedding matching, DeepFace anti-spoofing, duplicate-safe attendance, MySQL persistence, analytics, and a FastAPI API.
 
 **Live demo:** https://secure-vision-attendance-1.onrender.com/
 
@@ -10,7 +10,7 @@ A deployable computer-vision attendance platform that combines face enrollment, 
 
 ## What problem does it solve?
 
-Manual attendance is repetitive and difficult to audit. Basic face-recognition demos often stop at “predict a name” and do not handle image quality, repeated check-ins, persistence, enrollment, or video input.
+Manual attendance is repetitive and difficult to audit. Basic face-recognition demos often stop at “predict a name” and do not handle image quality, presentation attacks, repeated check-ins, persistence, enrollment, or video input.
 
 Secure Vision turns recognition into an attendance workflow:
 
@@ -21,10 +21,13 @@ Image / Video Upload
 Input + file validation
         |
         v
-Image quality checks / face detection
+Image quality + face detection
         |
         v
-Face embedding extraction (Facenet512)
+DeepFace anti-spoofing / liveness gate
+        |
+        v
+Facenet512 embedding extraction
         |
         v
 Cosine-distance matching
@@ -34,10 +37,8 @@ Cosine-distance matching
         |                         v
         |                   MySQL record
         |
-        +---- no match --> Unknown / not marked
+        +---- no match/spoof --> Recognition event only
 ```
-
-For video attendance, the system samples frames, recognizes faces in each sampled frame, deduplicates recognized people, and records each person at most once per day.
 
 ## Key features
 
@@ -45,12 +46,15 @@ For video attendance, the system samples frames, recognizes faces in each sample
 - Face verification through a REST API
 - Video attendance for MP4, MOV, AVI, MKV, and WEBM uploads
 - Facenet512 embeddings with a cached NumPy index
-- Cosine-distance matching with a validated engineering threshold of `0.375`
+- Cosine-distance matching with validated engineering threshold `0.375`
+- DeepFace anti-spoofing with fail-closed liveness gating
 - Threshold-relative match score for UI feedback
 - MySQL 8 attendance persistence
 - Database-level duplicate prevention using `UNIQUE(person_id, attendance_date)`
 - Separate attendance methods: `Face Recognition` and `Video Recognition`
-- Today's attendance dashboard with name, time, status, and method
+- Today's attendance dashboard
+- Recognition-event logging
+- Video-session tracking
 - Health endpoint reporting embedding-index readiness
 - Background embedding-index rebuild after enrollment
 - Upload-size and video-duration limits
@@ -58,26 +62,26 @@ For video attendance, the system samples frames, recognizes faces in each sample
 - FastAPI Swagger/OpenAPI documentation
 - Docker configuration for local/container deployment
 - SQL analytics and Power BI integration through the HTTPS analytics API
-- Automated tests for core database, quality, and liveness components
+- Automated tests for core database, quality, and liveness behavior
 
 ## Verified current configuration
 
-The current recognition configuration is:
+The validated local recognition configuration is:
 
 - **Embedding model:** `Facenet512`
 - **Cosine distance threshold:** `0.375`
-- **Liveness:** configurable; currently disabled for the verified recognition flow
+- **Liveness:** enabled locally and tested through the real DeepFace anti-spoofing path
 
-The real application flow has been tested end-to-end with four enrolled identities (`uzair`, `pappa`, `zohair`, `ammi`). All four were correctly recognized through `/recognition/verify`, and duplicate attendance protection returned `already_marked_today` on repeat submissions.
+The local `/recognition/verify` flow has been successfully tested with an enrolled `pappa` image. The API returned HTTP 200, correctly identified `pappa`, used Facenet512 with threshold `0.375`, reported `is_real: true`, and returned an anti-spoof score of approximately `0.99`. Duplicate attendance protection correctly returned `already_marked_today` on repeat submissions.
 
-A FacePass benchmark was also used for threshold selection. At `0.375`, the benchmark reported 79.22% genuine acceptance, 3.82% false acceptance, 96.18% unknown rejection, and 87.70% balanced accuracy. These are benchmark results, not a universal production accuracy guarantee.
+A FacePass benchmark was used for threshold selection. At `0.375`, the benchmark reported 79.22% genuine acceptance, 3.82% false acceptance, 96.18% unknown rejection, and 87.70% balanced accuracy. These are benchmark results, not a universal production accuracy guarantee.
 
 ## API endpoints
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/health` | Service and embedding-index health |
-| POST | `/recognition/verify` | Verify faces in an image and mark attendance |
+| POST | `/recognition/verify` | Verify faces, apply liveness, and mark attendance |
 | POST | `/recognition/batch-verify` | Verify multiple images |
 | POST | `/recognition/video` | Process a video and mark recognized people |
 | GET | `/attendance` | Retrieve attendance records |
@@ -88,9 +92,13 @@ A FacePass benchmark was also used for threshold selection. At `0.375`, the benc
 | GET | `/analytics/dashboard` | Return MySQL-backed analytics for BI/dashboard use |
 | GET | `/docs` | Interactive Swagger UI |
 
-## Recognition logic
+## Recognition and liveness logic
 
-The application extracts an embedding for each detected face and compares it with the registered embedding index using cosine distance. A face is accepted when its distance is at or below `EMBEDDING_DISTANCE_THRESHOLD`.
+The application detects faces, runs DeepFace anti-spoofing, and only allows an identity match when liveness succeeds. When `LIVENESS_ENABLED=true`, an unavailable or failed liveness result is fail-closed and cannot create attendance.
+
+For live faces, the anti-spoofing result exposes `is_real=true` and the DeepFace `antispoof_score`. Spoof/unavailable results are returned as non-matches and are not allowed to create attendance.
+
+After a live-face check succeeds, the application extracts a Facenet512 embedding and compares it with the registered embedding index using cosine distance. A face is accepted when its distance is at or below `EMBEDDING_DISTANCE_THRESHOLD`.
 
 The displayed match score is **threshold-relative UI feedback, not a calibrated probability or accuracy percentage**. The operating threshold was selected using the project's FacePass benchmark and should be revalidated for any materially different deployment population or environment.
 
@@ -120,7 +128,7 @@ The repository also contains:
 
 - `docs/analytics.sql` — direct MySQL analytics queries
 - `docs/POWER_BI_SETUP.md` — Power BI Web/HTTPS connector setup
-- `Secure_Vision_Attendance_Analytics.pbix` — Power BI report artifact
+- `Secure_Vision_Attendance_Analytics.pbix` — Power BI report artifact when present in the deployment workspace
 
 The recommended BI architecture keeps MySQL credentials server-side and lets Power BI consume the HTTPS analytics API.
 
@@ -169,7 +177,19 @@ For development/testing:
 pip install -r requirements-dev.txt
 ```
 
-### 3. Start the API
+### 3. Configure environment
+
+Copy `.env.example` to `.env` and set the MySQL credentials locally. Never commit `.env` or expose database passwords.
+
+For the validated recognition configuration:
+
+```env
+EMBEDDING_MODEL_NAME=Facenet512
+EMBEDDING_DISTANCE_THRESHOLD=0.375
+LIVENESS_ENABLED=true
+```
+
+### 4. Start the API
 
 ```bash
 uvicorn app.api.main:app --reload
@@ -177,7 +197,7 @@ uvicorn app.api.main:app --reload
 
 The API will be available at `http://127.0.0.1:8000`.
 
-### 4. Start the frontend
+### 5. Start the frontend
 
 From another terminal:
 
@@ -240,23 +260,38 @@ pytest -q
 
 The test suite covers core database duplicate prevention and service-level quality/liveness behavior. Recognition accuracy should be evaluated separately with a representative dataset.
 
+The validated manual integration test is:
+
+```text
+image upload
+  -> quality validation
+  -> face detection
+  -> DeepFace anti-spoofing
+  -> Facenet512 embedding
+  -> cosine matching
+  -> MySQL attendance
+  -> recognition-event logging
+```
+
 ## Security and responsible use
 
-Facial embeddings and face images are biometric data. Do not use this demo as-is for high-stakes identity decisions.
+Facial embeddings and face images are biometric data. Do not use this project as-is for high-stakes identity decisions.
 
-Before a real deployment, add appropriate authentication/authorization, HTTPS-only access, encrypted storage, retention/deletion controls, audit logging, consent and privacy processes, and a validated recognition threshold. See [`SECURITY.md`](SECURITY.md).
+Before real deployment, add appropriate authentication/authorization, HTTPS-only access, encrypted storage, retention/deletion controls, audit logging, consent and privacy processes, and validated FAR/FRR measurements. See `SECURITY.md`.
 
-The liveness service is present as a configurable component; `LIVENESS_ENABLED` should only be enabled after validating its behavior and resource requirements for the target deployment.
+The liveness implementation is now technically integrated and locally verified, but presentation-attack performance must still be validated against a representative spoof dataset before making strong security claims.
 
 ## Current verification snapshot
 
 The local MySQL-backed application has been verified with:
 
-- 4/4 real enrolled identities correctly recognized through `/recognition/verify`
+- 4/4 enrolled identities correctly recognized during the real enrollment self-recognition test
 - Duplicate attendance protection confirmed
 - Recognition events persisted to MySQL
 - Video sessions persisted and completed successfully
-- Facenet512 threshold `0.375` active in the current configuration
+- Facenet512 threshold `0.375` active
+- DeepFace anti-spoofing active in the local API flow
+- Pappa image accepted as live with an anti-spoof score of approximately `0.99`
 
 Example local database snapshot during verification:
 
@@ -272,19 +307,33 @@ These figures are test-environment data and should not be treated as production 
 
 - A match score is not a probability of identity.
 - Video recognition is frame-sampling based rather than continuous tracking.
-- Liveness is currently disabled in the verified flow and must be validated before claiming presentation-attack resistance.
+- Liveness performance needs broader presentation-attack validation before production security claims.
 - The public demo should use synthetic/test enrollment data rather than sensitive real-world biometric data.
 - Production use requires appropriate authentication, privacy controls, secure biometric storage, and operational monitoring.
 
-## Next production upgrades
+## Production checklist
 
-1. Validate and enable an appropriate liveness/presentation-attack control
-2. Add authentication and role-based access control
-3. Harden managed MySQL deployment and backups
-4. Add encrypted biometric storage and key management
-5. Expand FAR/FRR and demographic/environment validation
-6. Add structured audit logs and monitoring
-7. Add background job processing for long videos
+- [x] Face recognition
+- [x] Facenet512 embedding index
+- [x] Validated operating threshold
+- [x] Image quality checks
+- [x] DeepFace anti-spoofing integration
+- [x] Fail-closed liveness gate
+- [x] MySQL attendance persistence
+- [x] Duplicate attendance protection
+- [x] Recognition-event logging
+- [x] Video-session tracking
+- [x] Analytics SQL
+- [x] HTTPS analytics API
+- [x] Swagger/OpenAPI
+- [x] Docker/Render configuration
+- [x] Environment-based configuration
+- [x] Secrets kept out of Git
+- [x] Local end-to-end verification
+- [ ] Production authentication/RBAC
+- [ ] Managed MySQL backup/recovery validation
+- [ ] Broader FAR/FRR and presentation-attack validation
+- [ ] Production monitoring and alerting
 
 ## License
 
