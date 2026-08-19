@@ -13,10 +13,11 @@ except ImportError:  # Database features report unavailable instead of breaking 
 # ============================================================
 # LOAD ENVIRONMENT VARIABLES
 # ============================================================
-# Loads MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE,
-# MYSQL_USER and MYSQL_PASSWORD from the local .env file.
+# Load the project's .env explicitly from the repository root.
+# Support both the current DB_* names and the older MYSQL_* names.
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / ".env", override=False)
 
 
 # ============================================================
@@ -24,19 +25,23 @@ load_dotenv()
 # ============================================================
 
 MYSQL_CONFIG = {
-    "host": os.getenv("MYSQL_HOST", "127.0.0.1"),
-    "port": int(os.getenv("MYSQL_PORT", "3306")),
-    "database": os.getenv("MYSQL_DATABASE", "secure_vision"),
-    "user": os.getenv("MYSQL_USER", "secure_vision_app"),
-    "password": os.getenv("MYSQL_PASSWORD", ""),
+    "host": os.getenv("DB_HOST", os.getenv("MYSQL_HOST", "127.0.0.1")),
+    "port": int(os.getenv("DB_PORT", os.getenv("MYSQL_PORT", "3306"))),
+    "database": os.getenv(
+        "DB_NAME", os.getenv("MYSQL_DATABASE", "secure_vision")
+    ),
+    "user": os.getenv("DB_USER", os.getenv("MYSQL_USER", "secure_vision_app")),
+    "password": os.getenv(
+        "DB_PASSWORD", os.getenv("MYSQL_PASSWORD", "")
+    ),
 }
 
 
 # ============================================================
 # CONNECTION POOL
 # ============================================================
-# The pool is created lazily so a remote deployment without a local
-# MySQL server can still boot and expose health/error responses.
+# The pool is created lazily so a deployment without a reachable MySQL
+# server can still boot and expose health/error responses.
 
 connection_pool = None
 
@@ -84,7 +89,7 @@ def init_db():
         cursor.execute("SELECT 1")
         cursor.fetchone()
 
-        schema_path = Path(__file__).resolve().parents[2] / "docs" / "schema.sql"
+        schema_path = BASE_DIR / "docs" / "schema.sql"
         if not schema_path.exists():
             raise FileNotFoundError(f"Database schema not found: {schema_path}")
 
