@@ -1,9 +1,13 @@
 import os
 from contextlib import contextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
-import mysql.connector
-from mysql.connector import pooling
+
+try:
+    from mysql.connector import pooling
+except ImportError:  # Database features report unavailable instead of breaking API startup.
+    pooling = None
 
 
 # ============================================================
@@ -31,16 +35,8 @@ MYSQL_CONFIG = {
 # ============================================================
 # CONNECTION POOL
 # ============================================================
-# IMPORTANT:
-# The pool is created lazily.
-#
-# Previously the pool was created immediately when this module
-# was imported. On Render, that caused the entire FastAPI
-# application to fail because Render does not have MySQL running
-# at 127.0.0.1:3306.
-#
-# Lazy creation keeps the application bootable when MySQL is
-# unavailable while preserving normal local MySQL behavior.
+# The pool is created lazily so a remote deployment without a local
+# MySQL server can still boot and expose health/error responses.
 
 connection_pool = None
 
@@ -50,17 +46,15 @@ connection_pool = None
 # ============================================================
 
 def _get_connection_pool():
-    """
-    Create the MySQL connection pool only when it is needed.
-
-    Returns:
-        MySQLConnectionPool
-    """
-
+    """Create the MySQL connection pool only when it is needed."""
     global connection_pool
 
-    if connection_pool is None:
+    if pooling is None:
+        raise RuntimeError(
+            "mysql-connector-python is not installed. Install requirements.txt."
+        )
 
+    if connection_pool is None:
         connection_pool = pooling.MySQLConnectionPool(
             pool_name="secure_vision_pool",
             pool_size=5,
@@ -77,33 +71,46 @@ def _get_connection_pool():
 
 def init_db():
     """
-    Verify that the MySQL database is reachable.
+    Verify MySQL connectivity and initialize the application schema.
 
-    The connection pool is created here when the application
-    explicitly performs a database startup check.
-
-    If MySQL is unavailable, the caller can catch the exception
-    and allow the API to continue running.
+    Schema creation is idempotent (CREATE TABLE IF NOT EXISTS), so a fresh
+    deployment can boot without requiring a manually prepared schema.
+    Existing tables/data are preserved.
     """
-
     pool = _get_connection_pool()
-
     conn = pool.get_connection()
-
     try:
-
         cursor = conn.cursor()
-
-        # Simple connectivity test
         cursor.execute("SELECT 1")
-
         cursor.fetchone()
 
+        schema_path = Path(__file__).resolve().parents[2] / "docs" / "schema.sql"
+        if not schema_path.exists():
+            raise FileNotFoundError(f"Database schema not found: {schema_path}")
+
+        statements = [
+            statement.strip()
+            for statement in schema_path.read_text(encoding="utf-8").split(";")
+            if statement.strip()
+        ]
+        for statement in statements:
+            cursor.execute(statement)
+        conn.commit()
         cursor.close()
-
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-
         conn.close()
+
+
+def database_is_available() -> bool:
+    """Return True only when the configured MySQL database is reachable."""
+    try:
+        init_db()
+        return True
+    except Exception:
+        return False
 
 
 # ============================================================
@@ -115,32 +122,16 @@ def get_connection():
     """
     Provide a connection from the MySQL connection pool.
 
-    The pool is created only when a database operation actually
-    needs it.
-
-    Successful operations are committed automatically.
-    Failed operations are rolled back automatically.
+    Successful operations are committed automatically; failed operations
+    are rolled back and re-raised.
     """
-
     pool = _get_connection_pool()
-
     conn = pool.get_connection()
-
     try:
-
         yield conn
-
-        # Commit successful database operations
         conn.commit()
-
     except Exception:
-
-        # Roll back failed operations
         conn.rollback()
-
         raise
-
     finally:
-
-        # Return the connection to the pool
         conn.close()

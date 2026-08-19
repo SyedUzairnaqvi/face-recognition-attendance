@@ -5,7 +5,29 @@ from typing import Dict, List
 
 import cv2
 import numpy as np
-from deepface import DeepFace
+
+try:
+    from deepface import DeepFace as _DeepFace
+except ImportError:  # Keep API startup/test collection usable without ML extras.
+    _DeepFace = None
+
+
+class _DeepFaceProxy:
+    def _require(self):
+        if _DeepFace is None:
+            raise RuntimeError(
+                "DeepFace is not installed. Install requirements.txt to enable face recognition."
+            )
+        return _DeepFace
+
+    def represent(self, *args, **kwargs):
+        return self._require().represent(*args, **kwargs)
+
+    def extract_faces(self, *args, **kwargs):
+        return self._require().extract_faces(*args, **kwargs)
+
+
+DeepFace = _DeepFaceProxy()
 
 from app.core.config import (
     EMBEDDING_INDEX_PATH,
@@ -61,6 +83,20 @@ def _embedding_from_face(face: np.ndarray) -> np.ndarray | None:
     return embedding
 
 
+def _extract_live_faces(image) -> list[dict]:
+    """Compatibility/testable wrapper around DeepFace anti-spoof extraction."""
+    try:
+        return DeepFace.extract_faces(
+            img_path=image,
+            detector_backend="opencv",
+            enforce_detection=False,
+            align=True,
+            anti_spoofing=True,
+        )
+    except Exception:
+        return []
+
+
 def _check_liveness(face: np.ndarray) -> dict:
     """Run DeepFace anti-spoofing and normalize the result.
 
@@ -95,8 +131,6 @@ def _check_liveness(face: np.ndarray) -> dict:
             "status": "unavailable",
         }
 
-    # The cropped face is already selected by our detector. If DeepFace
-    # returns multiple results, use the largest detected face.
     face_obj = max(
         faces,
         key=lambda item: (
@@ -153,13 +187,18 @@ def build_embedding_index(known_faces_dir: Path) -> dict:
         raise RuntimeError("No usable face embeddings were generated.")
 
     matrix = np.vstack(embeddings).astype(np.float32)
+    # Write to a temporary file in the same directory, then atomically replace
+    # the live index. Readers therefore never observe a half-written NPZ file.
+    EMBEDDING_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = EMBEDDING_INDEX_PATH.with_suffix(".tmp.npz")
     np.savez_compressed(
-        EMBEDDING_INDEX_PATH,
+        temp_path,
         embeddings=matrix,
         names=np.asarray(names),
         sources=np.asarray(sources),
         model=np.asarray([EMBEDDING_MODEL_NAME]),
     )
+    temp_path.replace(EMBEDDING_INDEX_PATH)
     return {
         "index_path": str(EMBEDDING_INDEX_PATH),
         "model": EMBEDDING_MODEL_NAME,
@@ -216,11 +255,6 @@ def recognize_with_embeddings(img_path: str) -> List[dict]:
         facial_area = face_obj.get("facial_area", {})
         face = face_obj["face"]
 
-        # ------------------------------------------------------------
-        # LIVENESS GATE
-        # ------------------------------------------------------------
-        # Run anti-spoofing before identity matching. A spoof or an
-        # unavailable liveness model is always rejected when enabled.
         liveness = _check_liveness(face)
         if LIVENESS_ENABLED and liveness.get("is_real") is not True:
             results.append({

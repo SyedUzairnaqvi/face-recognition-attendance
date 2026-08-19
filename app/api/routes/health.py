@@ -1,6 +1,8 @@
 import numpy as np
 from fastapi import APIRouter
 
+from app.db.database import database_is_available
+
 from app.core.config import (
     KNOWN_FACES_DIR,
     EMBEDDING_INDEX_PATH,
@@ -57,4 +59,5 @@ def health():
         "embedding_model": EMBEDDING_MODEL_NAME,
         "index_model": index_model,
         "index_error": index_error,
+        "database_connected": database_is_available(),
     }
